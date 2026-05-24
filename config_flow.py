@@ -192,7 +192,7 @@ class FroniusVirtualInverterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
                     ),
                     vol.Optional(CONF_MODBUS_ENABLED, default=False): selector.BooleanSelector(),
                     vol.Optional(CONF_MODBUS_PORT, default=DEFAULT_MODBUS_PORT): selector.NumberSelector(
-                        selector.NumberSelectorConfig(min=1024, max=65535, mode="box")
+                        selector.NumberSelectorConfig(min=1, max=65535, mode="box")
                     ),
                 }
             ),

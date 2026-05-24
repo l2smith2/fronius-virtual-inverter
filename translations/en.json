@@ -7,12 +7,16 @@
         "data": {
           "name": "Inverter Name",
           "port": "HTTP Server Port",
-          "update_interval": "Update Interval (seconds)"
+          "update_interval": "Update Interval (seconds)",
+          "modbus_enabled": "Enable Smart Meter IP (Modbus TCP)",
+          "modbus_port": "Modbus Port"
         },
         "data_description": {
           "name": "Used as the mDNS hostname (e.g. 'fronius-virtual' → fronius-virtual.local)",
           "port": "Port for the Fronius Solar API HTTP server (default: 8484)",
-          "update_interval": "How often to refresh sensor values (default: 10)"
+          "update_interval": "How often to refresh sensor values (default: 10)",
+          "modbus_enabled": "Also emulate a Fronius Smart Meter IP via Modbus TCP — gives the Wattpilot a second way to receive grid data",
+          "modbus_port": "Modbus TCP port (default: 502 — use 5020 if HA lacks permission to bind port 502)"
         }
       },
       "sensors": {
@@ -24,19 +28,15 @@
           "p_grid_sensor_neg": "P_Grid export sensor (+W, will be negated)",
           "p_grid_dual_mode": "Use separate import/export sensors for P_Grid",
           "p_grid_invert": "Invert P_Grid sign",
-
           "p_pv_sensor": "P_PV sensor (solar W)",
           "p_pv_invert": "Invert P_PV sign",
-
           "p_akku_sensor": "P_Akku sensor (single, signed W)",
           "p_akku_sensor_pos": "P_Akku charge sensor (+W)",
           "p_akku_sensor_neg": "P_Akku discharge sensor (+W, will be negated)",
           "p_akku_dual_mode": "Use separate charge/discharge sensors for P_Akku",
           "p_akku_invert": "Invert P_Akku sign",
-
           "p_load_sensor": "P_Load sensor (consumption W)",
           "p_load_invert": "Invert P_Load sign",
-
           "soc_sensor": "Battery SOC sensor (%)"
         }
       }
@@ -56,6 +56,8 @@
         "data": {
           "port": "HTTP Server Port",
           "update_interval": "Update Interval (seconds)",
+          "modbus_enabled": "Enable Smart Meter IP (Modbus TCP)",
+          "modbus_port": "Modbus Port",
           "p_grid_sensor": "P_Grid sensor",
           "p_grid_sensor_pos": "P_Grid import sensor",
           "p_grid_sensor_neg": "P_Grid export sensor",
@@ -71,6 +73,10 @@
           "p_load_sensor": "P_Load sensor",
           "p_load_invert": "Invert P_Load sign",
           "soc_sensor": "Battery SOC sensor"
+        },
+        "data_description": {
+          "modbus_enabled": "Also emulate a Fronius Smart Meter IP via Modbus TCP",
+          "modbus_port": "Modbus TCP port (default: 502 — use 5020 if HA lacks permission to bind port 502)"
         }
       }
     }
