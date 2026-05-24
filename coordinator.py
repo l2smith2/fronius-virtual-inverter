@@ -47,11 +47,14 @@ class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=interval),
         )
 
-        # Energy accumulators (simple daily tracking)
+        # PV energy accumulators
         self._e_day: float = 0.0
         self._e_year: float = 0.0
         self._e_total: float = 0.0
-        self._last_pv: float | None = None
+
+        # Grid energy accumulators for Modbus Smart Meter emulation
+        self._tot_wh_imp: float = 0.0
+        self._tot_wh_exp: float = 0.0
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Read all configured sensors and return power flow data."""
@@ -95,15 +98,22 @@ class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
 
         soc = read_soc(self.hass, cfg.get(CONF_SOC_SENSOR))
 
-        # Accumulate energy if we have PV power
+        interval_s = float(int(cfg.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)))
+
+        # Accumulate PV energy
         if p_pv is not None and p_pv > 0:
-            interval_s = float(
-                int(cfg.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
-            )
             increment_wh = p_pv * interval_s / 3600.0
             self._e_day += increment_wh
             self._e_year += increment_wh
             self._e_total += increment_wh
+
+        # Accumulate grid energy for Modbus meter
+        if p_grid is not None:
+            grid_wh = abs(p_grid) * interval_s / 3600.0
+            if p_grid > 0:
+                self._tot_wh_imp += grid_wh
+            elif p_grid < 0:
+                self._tot_wh_exp += grid_wh
 
         result: dict[str, Any] = {
             "P_Grid": p_grid,
@@ -114,6 +124,8 @@ class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
             "E_Day": self._e_day,
             "E_Year": self._e_year,
             "E_Total": self._e_total,
+            "_tot_wh_imp": self._tot_wh_imp,
+            "_tot_wh_exp": self._tot_wh_exp,
         }
 
         _LOGGER.debug(

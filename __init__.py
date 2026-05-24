@@ -1,9 +1,17 @@
 """Fronius Virtual Inverter — Home Assistant custom integration.
 
-Impersonates a Fronius GEN24 hybrid inverter on the local network so that
-a Fronius Wattpilot EV charger can pair with it and receive PV surplus data
-from Home Assistant sensors — enabling solar surplus (Eco) charging without
-real Fronius hardware.
+Provides two complementary emulation modes so a Fronius Wattpilot EV charger
+can perform PV surplus (Eco) charging without real Fronius hardware:
+
+  1. HTTP Solar API v1 server — impersonates a Fronius GEN24 hybrid inverter.
+     The Wattpilot discovers it via mDNS and pairs with it directly.
+
+  2. Modbus TCP Smart Meter IP server — emulates a Fronius Smart Meter IP
+     (SunSpec model 213) on port 502.  A real or virtual Fronius inverter
+     (or the Wattpilot itself) can use this as its primary grid meter,
+     enabling surplus charging via standard Fronius meter protocols.
+
+Both modes read the same HA sensor mappings via the shared coordinator.
 """
 from __future__ import annotations
 
@@ -16,8 +24,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import (
+    CONF_MODBUS_ENABLED,
+    CONF_MODBUS_PORT,
     CONF_PORT,
     CONF_UPDATE_INTERVAL,
+    DEFAULT_MODBUS_PORT,
     DEFAULT_PORT,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
@@ -25,6 +36,7 @@ from .const import (
 from .coordinator import FroniusVirtualInverterCoordinator
 from .http_server import FroniusSolarAPIServer
 from .mdns_announcer import FroniusMDNSAnnouncer
+from .modbus_server import FroniusSmartMeterModbusServer
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,7 +44,7 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 
 def _make_serial(entry_id: str) -> str:
-    """Generate a stable 8-digit serial number from the entry ID."""
+    """Generate a stable 8-character serial number from the entry ID."""
     return hashlib.md5(entry_id.encode()).hexdigest()[:8].upper()
 
 
@@ -47,13 +59,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     port = int(config.get(CONF_PORT, DEFAULT_PORT))
     serial = _make_serial(entry.entry_id)
 
-    # 1. Create coordinator
-    coordinator = FroniusVirtualInverterCoordinator(hass, config)
+    modbus_enabled = bool(config.get(CONF_MODBUS_ENABLED, False))
+    modbus_port = int(config.get(CONF_MODBUS_PORT, DEFAULT_MODBUS_PORT))
 
-    # Do first refresh to populate data
+    # ── Coordinator ────────────────────────────────────────────────────────
+    coordinator = FroniusVirtualInverterCoordinator(hass, config)
     await coordinator.async_config_entry_first_refresh()
 
-    # 2. Start HTTP server
+    # ── HTTP Solar API server ──────────────────────────────────────────────
     server = FroniusSolarAPIServer(
         coordinator=coordinator,
         port=port,
@@ -67,30 +80,56 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             f"Failed to start HTTP server on port {port}: {err}"
         ) from err
 
-    # 3. Start mDNS announcer
+    # ── mDNS announcer ─────────────────────────────────────────────────────
     mdns = FroniusMDNSAnnouncer(name=name, port=port)
     try:
         await mdns.start()
     except Exception as err:
         _LOGGER.warning("mDNS announcement failed (non-fatal): %s", err)
-        mdns = None  # mDNS failure is non-fatal; HTTP server still works
+        mdns = None
+
+    # ── Modbus TCP Smart Meter IP server (optional) ────────────────────────
+    modbus_server: FroniusSmartMeterModbusServer | None = None
+    if modbus_enabled:
+        modbus_server = FroniusSmartMeterModbusServer(
+            coordinator=coordinator,
+            port=modbus_port,
+            serial=serial,
+        )
+        try:
+            await modbus_server.start()
+            _LOGGER.info(
+                "Fronius Smart Meter IP Modbus server started on port %d",
+                modbus_port,
+            )
+        except OSError as err:
+            _LOGGER.error(
+                "Failed to start Modbus server on port %d: %s. "
+                "Try port 5020 if 502 requires root privileges.",
+                modbus_port,
+                err,
+            )
+            modbus_server = None  # Non-fatal; HTTP server still works
 
     hass.data[DOMAIN][entry.entry_id] = {
         "coordinator": coordinator,
         "server": server,
         "mdns": mdns,
+        "modbus_server": modbus_server,
         "config": config,
     }
 
-    # Set up sensor platform
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
-    # Listen for options updates
     entry.async_on_unload(entry.add_update_listener(_async_update_options))
 
     _LOGGER.info(
-        "Fronius Virtual Inverter '%s' running on port %d (serial %s)",
-        name, port, serial,
+        "Fronius Virtual Inverter '%s' running — HTTP port %d, "
+        "Modbus %s (port %d), serial %s",
+        name,
+        port,
+        "enabled" if modbus_server else "disabled",
+        modbus_port,
+        serial,
     )
     return True
 
@@ -102,18 +141,19 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok and entry.entry_id in hass.data[DOMAIN]:
         data = hass.data[DOMAIN].pop(entry.entry_id)
 
-        # Stop HTTP server
-        server: FroniusSolarAPIServer = data["server"]
-        await server.stop()
+        await data["server"].stop()
 
-        # Stop mDNS
         mdns: FroniusMDNSAnnouncer | None = data.get("mdns")
         if mdns is not None:
             await mdns.stop()
+
+        modbus: FroniusSmartMeterModbusServer | None = data.get("modbus_server")
+        if modbus is not None:
+            await modbus.stop()
 
     return unload_ok
 
 
 async def _async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Handle options update — reload the entry so config/server restarts."""
+    """Handle options update — reload the entry."""
     await hass.config_entries.async_reload(entry.entry_id)

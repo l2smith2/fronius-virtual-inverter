@@ -36,6 +36,12 @@ DEFAULT_PORT = 8484
 DEFAULT_UPDATE_INTERVAL = 10
 DEFAULT_NAME = "fronius-virtual"
 
+# Modbus TCP Smart Meter IP emulation
+CONF_MODBUS_ENABLED = "modbus_enabled"
+CONF_MODBUS_PORT = "modbus_port"
+DEFAULT_MODBUS_PORT = 502
+DEFAULT_MODBUS_PORT_ALT = 5020  # non-privileged fallback if 502 not available
+
 # mDNS
 MDNS_SERVICE_TYPE = "_http._tcp.local."
 MDNS_FRONIUS_TYPE = "_fronius-symo._tcp.local."

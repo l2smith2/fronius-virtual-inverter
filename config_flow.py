@@ -14,6 +14,8 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_MODBUS_ENABLED,
+    CONF_MODBUS_PORT,
     CONF_P_AKKU_DUAL_MODE,
     CONF_P_AKKU_INVERT,
     CONF_P_AKKU_SENSOR,
@@ -31,6 +33,7 @@ from .const import (
     CONF_PORT,
     CONF_SOC_SENSOR,
     CONF_UPDATE_INTERVAL,
+    DEFAULT_MODBUS_PORT,
     DEFAULT_NAME,
     DEFAULT_PORT,
     DEFAULT_UPDATE_INTERVAL,
@@ -187,6 +190,10 @@ class FroniusVirtualInverterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
                     vol.Required(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): selector.NumberSelector(
                         selector.NumberSelectorConfig(min=5, max=300, step=1, unit_of_measurement="s", mode="box")
                     ),
+                    vol.Optional(CONF_MODBUS_ENABLED, default=False): selector.BooleanSelector(),
+                    vol.Optional(CONF_MODBUS_PORT, default=DEFAULT_MODBUS_PORT): selector.NumberSelector(
+                        selector.NumberSelectorConfig(min=1024, max=65535, mode="box")
+                    ),
                 }
             ),
             errors=errors,
@@ -250,6 +257,11 @@ class FroniusVirtualInverterOptionsFlow(config_entries.OptionsFlow):
                 ),
                 vol.Optional(CONF_UPDATE_INTERVAL, default=current.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=5, max=300, step=1, unit_of_measurement="s", mode="box")
+                ),
+                # Modbus Smart Meter IP emulation
+                vol.Optional(CONF_MODBUS_ENABLED, default=current.get(CONF_MODBUS_ENABLED, False)): selector.BooleanSelector(),
+                vol.Optional(CONF_MODBUS_PORT, default=current.get(CONF_MODBUS_PORT, DEFAULT_MODBUS_PORT)): selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=1, max=65535, mode="box")
                 ),
                 # P_Grid
                 vol.Optional(CONF_P_GRID_DUAL_MODE, default=current.get(CONF_P_GRID_DUAL_MODE, False)): selector.BooleanSelector(),
