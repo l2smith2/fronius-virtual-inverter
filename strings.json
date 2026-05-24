@@ -1,0 +1,73 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Fronius Virtual Inverter",
+        "description": "Configure a virtual Fronius GEN24 inverter that the Wattpilot can pair with for PV surplus charging.",
+        "data": {
+          "name": "Inverter Name",
+          "port": "HTTP Server Port",
+          "update_interval": "Update Interval (seconds)"
+        }
+      },
+      "sensors": {
+        "title": "Map Sensors",
+        "description": "Select the HA sensors that provide power flow data. Leave blank if not available.",
+        "data": {
+          "p_grid_sensor": "P_Grid sensor (grid import/export W)",
+          "p_grid_sensor_pos": "P_Grid positive sensor (import W)",
+          "p_grid_sensor_neg": "P_Grid negative sensor (export W)",
+          "p_grid_dual_mode": "Dual sensor mode for P_Grid",
+          "p_grid_invert": "Invert P_Grid sign",
+
+          "p_pv_sensor": "P_PV sensor (solar generation W)",
+          "p_pv_invert": "Invert P_PV sign",
+
+          "p_akku_sensor": "P_Akku sensor (battery power W)",
+          "p_akku_sensor_pos": "P_Akku positive sensor (charge W)",
+          "p_akku_sensor_neg": "P_Akku negative sensor (discharge W)",
+          "p_akku_dual_mode": "Dual sensor mode for P_Akku",
+          "p_akku_invert": "Invert P_Akku sign",
+
+          "p_load_sensor": "P_Load sensor (consumption W)",
+          "p_load_invert": "Invert P_Load sign",
+
+          "soc_sensor": "SOC sensor (battery %)"
+        }
+      }
+    },
+    "error": {
+      "port_in_use": "Port is already in use. Choose a different port.",
+      "invalid_port": "Port must be between 1024 and 65535."
+    },
+    "abort": {
+      "already_configured": "A virtual inverter is already configured with this name."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Fronius Virtual Inverter Options",
+        "data": {
+          "port": "HTTP Server Port",
+          "update_interval": "Update Interval (seconds)",
+          "p_grid_sensor": "P_Grid sensor",
+          "p_grid_sensor_pos": "P_Grid positive sensor",
+          "p_grid_sensor_neg": "P_Grid negative sensor",
+          "p_grid_dual_mode": "Dual sensor mode for P_Grid",
+          "p_grid_invert": "Invert P_Grid sign",
+          "p_pv_sensor": "P_PV sensor",
+          "p_pv_invert": "Invert P_PV sign",
+          "p_akku_sensor": "P_Akku sensor",
+          "p_akku_sensor_pos": "P_Akku positive sensor",
+          "p_akku_sensor_neg": "P_Akku negative sensor",
+          "p_akku_dual_mode": "Dual sensor mode for P_Akku",
+          "p_akku_invert": "Invert P_Akku sign",
+          "p_load_sensor": "P_Load sensor",
+          "p_load_invert": "Invert P_Load sign",
+          "soc_sensor": "SOC sensor"
+        }
+      }
+    }
+  }
+}

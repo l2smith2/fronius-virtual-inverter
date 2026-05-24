@@ -1,0 +1,78 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Fronius Virtual Inverter",
+        "description": "Configure a virtual Fronius GEN24 inverter. The Wattpilot will discover this on your network and can pair with it for PV surplus (Eco) charging.",
+        "data": {
+          "name": "Inverter Name",
+          "port": "HTTP Server Port",
+          "update_interval": "Update Interval (seconds)"
+        },
+        "data_description": {
+          "name": "Used as the mDNS hostname (e.g. 'fronius-virtual' → fronius-virtual.local)",
+          "port": "Port for the Fronius Solar API HTTP server (default: 8484)",
+          "update_interval": "How often to refresh sensor values (default: 10)"
+        }
+      },
+      "sensors": {
+        "title": "Map Power Flow Sensors",
+        "description": "Map your Home Assistant sensors to the Fronius power flow fields. Sign conventions: P_Grid negative=export, P_Akku negative=discharge, P_PV always positive, P_Load always negative.",
+        "data": {
+          "p_grid_sensor": "P_Grid sensor (single, signed W)",
+          "p_grid_sensor_pos": "P_Grid import sensor (+W)",
+          "p_grid_sensor_neg": "P_Grid export sensor (+W, will be negated)",
+          "p_grid_dual_mode": "Use separate import/export sensors for P_Grid",
+          "p_grid_invert": "Invert P_Grid sign",
+
+          "p_pv_sensor": "P_PV sensor (solar W)",
+          "p_pv_invert": "Invert P_PV sign",
+
+          "p_akku_sensor": "P_Akku sensor (single, signed W)",
+          "p_akku_sensor_pos": "P_Akku charge sensor (+W)",
+          "p_akku_sensor_neg": "P_Akku discharge sensor (+W, will be negated)",
+          "p_akku_dual_mode": "Use separate charge/discharge sensors for P_Akku",
+          "p_akku_invert": "Invert P_Akku sign",
+
+          "p_load_sensor": "P_Load sensor (consumption W)",
+          "p_load_invert": "Invert P_Load sign",
+
+          "soc_sensor": "Battery SOC sensor (%)"
+        }
+      }
+    },
+    "error": {
+      "port_in_use": "Port is already in use. Try a different port.",
+      "invalid_port": "Port must be between 1024 and 65535."
+    },
+    "abort": {
+      "already_configured": "An inverter with this name is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Virtual Inverter Options",
+        "data": {
+          "port": "HTTP Server Port",
+          "update_interval": "Update Interval (seconds)",
+          "p_grid_sensor": "P_Grid sensor",
+          "p_grid_sensor_pos": "P_Grid import sensor",
+          "p_grid_sensor_neg": "P_Grid export sensor",
+          "p_grid_dual_mode": "Dual sensor mode for P_Grid",
+          "p_grid_invert": "Invert P_Grid sign",
+          "p_pv_sensor": "P_PV sensor",
+          "p_pv_invert": "Invert P_PV sign",
+          "p_akku_sensor": "P_Akku sensor",
+          "p_akku_sensor_pos": "P_Akku charge sensor",
+          "p_akku_sensor_neg": "P_Akku discharge sensor",
+          "p_akku_dual_mode": "Dual sensor mode for P_Akku",
+          "p_akku_invert": "Invert P_Akku sign",
+          "p_load_sensor": "P_Load sensor",
+          "p_load_invert": "Invert P_Load sign",
+          "soc_sensor": "Battery SOC sensor"
+        }
+      }
+    }
+  }
+}

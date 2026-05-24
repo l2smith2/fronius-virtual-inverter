@@ -1,0 +1,143 @@
+"""Sensor platform for Fronius Virtual Inverter — diagnostic entities."""
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from typing import Any
+
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
+)
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfEnergy, UnitOfPower, PERCENTAGE
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+from .const import DOMAIN
+from .coordinator import FroniusVirtualInverterCoordinator
+
+_LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class FroniusSensorEntityDescription(SensorEntityDescription):
+    """Describe a Fronius virtual inverter sensor."""
+    data_key: str = ""
+
+
+SENSOR_DESCRIPTIONS: tuple[FroniusSensorEntityDescription, ...] = (
+    FroniusSensorEntityDescription(
+        key="p_grid",
+        data_key="P_Grid",
+        name="Grid Power",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:transmission-tower",
+    ),
+    FroniusSensorEntityDescription(
+        key="p_pv",
+        data_key="P_PV",
+        name="PV Power",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:solar-power",
+    ),
+    FroniusSensorEntityDescription(
+        key="p_akku",
+        data_key="P_Akku",
+        name="Battery Power",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:battery-charging",
+    ),
+    FroniusSensorEntityDescription(
+        key="p_load",
+        data_key="P_Load",
+        name="Load Power",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:home-lightning-bolt",
+    ),
+    FroniusSensorEntityDescription(
+        key="soc",
+        data_key="SOC",
+        name="Battery SOC",
+        device_class=SensorDeviceClass.BATTERY,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:battery",
+    ),
+    FroniusSensorEntityDescription(
+        key="e_day",
+        data_key="E_Day",
+        name="Energy Today",
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:solar-power-variant",
+    ),
+)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up Fronius Virtual Inverter sensors."""
+    coordinator: FroniusVirtualInverterCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+
+    entities = [
+        FroniusVirtualSensor(coordinator, entry, description)
+        for description in SENSOR_DESCRIPTIONS
+    ]
+    async_add_entities(entities)
+
+
+class FroniusVirtualSensor(CoordinatorEntity, SensorEntity):
+    """A diagnostic sensor that mirrors data being served to the Wattpilot."""
+
+    entity_description: FroniusSensorEntityDescription
+
+    def __init__(
+        self,
+        coordinator: FroniusVirtualInverterCoordinator,
+        entry: ConfigEntry,
+        description: FroniusSensorEntityDescription,
+    ) -> None:
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_{description.key}"
+        self._attr_name = f"{entry.title} {description.name}"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": entry.title,
+            "manufacturer": "Fronius (Virtual)",
+            "model": "GEN24 Virtual Inverter",
+            "sw_version": "1.0.0",
+        }
+
+    @property
+    def native_value(self) -> float | None:
+        if self.coordinator.data is None:
+            return None
+        val = self.coordinator.data.get(self.entity_description.data_key)
+        if val is None:
+            return None
+        return round(val, 2)
