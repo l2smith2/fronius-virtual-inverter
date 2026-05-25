@@ -27,6 +27,7 @@ from .const import (
     CONF_MODBUS_ENABLED,
     CONF_MODBUS_PORT,
     CONF_PORT,
+    CONF_SYSTEM_NAME,
     CONF_UPDATE_INTERVAL,
     DEFAULT_MODBUS_PORT,
     DEFAULT_PORT,
@@ -58,6 +59,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     name = config.get(CONF_NAME, entry.title)
     port = int(config.get(CONF_PORT, DEFAULT_PORT))
     serial = _make_serial(entry.entry_id)
+    system_name = config.get(CONF_SYSTEM_NAME) or name
 
     modbus_enabled = bool(config.get(CONF_MODBUS_ENABLED, False))
     modbus_port = int(config.get(CONF_MODBUS_PORT, DEFAULT_MODBUS_PORT))
@@ -72,6 +74,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         port=port,
         serial=serial,
         inverter_name=name,
+        system_name=system_name,
     )
     try:
         await server.start()
@@ -81,9 +84,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ) from err
 
     # ── mDNS announcer ─────────────────────────────────────────────────────
-    mdns = FroniusMDNSAnnouncer(name=name, port=port)
+    mdns = FroniusMDNSAnnouncer(name=name, port=port, serial=serial)
     try:
-        await mdns.start()
+        await mdns.async_start(hass)
     except Exception as err:
         _LOGGER.warning("mDNS announcement failed (non-fatal): %s", err)
         mdns = None
@@ -145,7 +148,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         mdns: FroniusMDNSAnnouncer | None = data.get("mdns")
         if mdns is not None:
-            await mdns.stop()
+            await mdns.async_stop()
 
         modbus: FroniusSmartMeterModbusServer | None = data.get("modbus_server")
         if modbus is not None:

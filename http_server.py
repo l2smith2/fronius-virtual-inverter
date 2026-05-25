@@ -12,6 +12,7 @@ from aiohttp import web
 from .const import (
     API_INVERTER_INFO,
     API_INVERTER_REALTIME,
+    API_LOGGER_INFO,
     API_METER_REALTIME,
     API_POWER_FLOW,
     API_STORAGE_REALTIME,
@@ -46,11 +47,13 @@ class FroniusSolarAPIServer:
         port: int,
         serial: str,
         inverter_name: str,
+        system_name: str,
     ) -> None:
         self._coordinator = coordinator
         self._port = port
         self._serial = serial
         self._inverter_name = inverter_name
+        self._system_name = system_name
         self._app = web.Application()
         self._runner: web.AppRunner | None = None
         self._site: web.TCPSite | None = None
@@ -63,6 +66,7 @@ class FroniusSolarAPIServer:
         self._app.router.add_get(API_INVERTER_REALTIME, self._handle_inverter_realtime)
         self._app.router.add_get(API_METER_REALTIME, self._handle_meter_realtime)
         self._app.router.add_get(API_STORAGE_REALTIME, self._handle_storage_realtime)
+        self._app.router.add_get(API_LOGGER_INFO, self._handle_logger_info)
         # Catch-all for any other Solar API paths
         self._app.router.add_get("/solar_api/{tail:.*}", self._handle_unknown)
 
@@ -87,7 +91,7 @@ class FroniusSolarAPIServer:
     def _json_response(self, data: Any) -> web.Response:
         return web.Response(
             content_type="application/json",
-            text=json.dumps(data, separators=(",", ":")),
+            text=json.dumps(data, indent=3),
         )
 
     async def _handle_api_version(self, request: web.Request) -> web.Response:
@@ -95,7 +99,7 @@ class FroniusSolarAPIServer:
             {
                 "APIVersion": 1,
                 "BaseURL": "/solar_api/v1/",
-                "CompatibilityRange": "1.5-1",
+                "CompatibilityRange": "1.8-1",
             }
         )
 
@@ -109,17 +113,13 @@ class FroniusSolarAPIServer:
         p_load = data.get("P_Load")
         soc = data.get("SOC")
 
-        # Inverter power = PV power (what GEN24 reports as its own output)
-        inverter_p = p_pv if p_pv is not None else 0.0
-
-        # Build E_Day / E_Year / E_Total from coordinator accumulated values
         e_day = data.get("E_Day", 0.0)
         e_year = data.get("E_Year", 0.0)
         e_total = data.get("E_Total", 0.0)
 
         inverter_block: dict[str, Any] = {
-            "DT": FRONIUS_DEVICE_TYPE,
-            "P": round(inverter_p, 1),
+            "DT": 102,
+            "P": round(p_pv, 1) if p_pv is not None else None,
             "E_Day": round(e_day, 1),
             "E_Year": round(e_year, 1),
             "E_Total": round(e_total, 1),
@@ -133,17 +133,16 @@ class FroniusSolarAPIServer:
             "E_Year": round(e_year, 1),
             "E_Total": round(e_total, 1),
             "Meter_Location": "grid",
-            "Mode": "bidirectional" if p_akku is not None else "produce-only",
+            "Mode": "bidirectional" if p_akku is not None else "meter",
+            "P_PV": round(p_pv, 1) if p_pv is not None else None,
+            "P_Grid": round(p_grid, 1) if p_grid is not None else None,
+            "P_Akku": round(p_akku, 1) if p_akku is not None else None,
         }
 
-        if p_pv is not None:
-            site_block["P_PV"] = round(p_pv, 1)
-        if p_grid is not None:
-            site_block["P_Grid"] = round(p_grid, 1)
         if p_akku is not None:
-            site_block["P_Akku"] = round(p_akku, 1)
             site_block["BatteryStandby"] = False
             site_block["BackupMode"] = False
+
         if p_load is not None:
             site_block["P_Load"] = round(p_load, 1)
 
@@ -267,6 +266,30 @@ class FroniusSolarAPIServer:
                         },
                         "Modules": [],
                     }
+                }
+            },
+            "Head": _make_head(),
+        }
+        return self._json_response(payload)
+
+    async def _handle_logger_info(self, request: web.Request) -> web.Response:
+        payload = {
+            "Body": {
+                "LoggerInfo": {
+                    "UniqueID": f"240.{self._serial}",
+                    "ProductID": "fronius-datamanager-card",
+                    "PlatformID": "wilma",
+                    "HWVersion": "1.4E",
+                    "SWVersion": "3.4.0-102",
+                    "TimezoneLocation": "Australia/Sydney",
+                    "TimezoneName": "AEST",
+                    "UTCOffset": 36000,
+                    "DefaultLanguage": "en",
+                    "CashFactor": 0.0,
+                    "CashCurrency": "AUD",
+                    "CO2Factor": 0.53,
+                    "CO2Unit": "kg",
+                    "Systemname": self._system_name,
                 }
             },
             "Head": _make_head(),

@@ -5,6 +5,7 @@ DOMAIN = "fronius_virtual_inverter"
 # Config keys
 CONF_PORT = "port"
 CONF_UPDATE_INTERVAL = "update_interval"
+CONF_SYSTEM_NAME = "system_name"
 
 # P_Grid
 CONF_P_GRID_SENSOR = "p_grid_sensor"
@@ -32,7 +33,7 @@ CONF_P_LOAD_INVERT = "p_load_invert"
 CONF_SOC_SENSOR = "soc_sensor"
 
 # Defaults
-DEFAULT_PORT = 8484
+DEFAULT_PORT = 80
 DEFAULT_UPDATE_INTERVAL = 10
 DEFAULT_NAME = "fronius-virtual"
 
@@ -59,4 +60,5 @@ API_INVERTER_INFO = f"{API_BASE}/GetInverterInfo.fcgi"
 API_INVERTER_REALTIME = f"{API_BASE}/GetInverterRealtimeData.fcgi"
 API_METER_REALTIME = f"{API_BASE}/GetMeterRealtimeData.fcgi"
 API_STORAGE_REALTIME = f"{API_BASE}/GetStorageRealtimeData.fcgi"
+API_LOGGER_INFO = f"{API_BASE}/GetLoggerInfo.fcgi"
 API_VERSION = "/solar_api/GetAPIVersion.cgi"

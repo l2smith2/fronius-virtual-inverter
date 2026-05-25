@@ -32,6 +32,7 @@ from .const import (
     CONF_P_PV_SENSOR,
     CONF_PORT,
     CONF_SOC_SENSOR,
+    CONF_SYSTEM_NAME,
     CONF_UPDATE_INTERVAL,
     DEFAULT_MODBUS_PORT,
     DEFAULT_NAME,
@@ -55,7 +56,7 @@ def _port_available(port: int) -> bool:
     """Check if a port is available."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
-            s.bind(("", port))
+            s.bind(("", int(port)))
             return True
         except OSError:
             return False
@@ -66,7 +67,7 @@ def _basic_schema(defaults: dict) -> vol.Schema:
         {
             vol.Required(CONF_NAME, default=defaults.get(CONF_NAME, DEFAULT_NAME)): str,
             vol.Required(CONF_PORT, default=defaults.get(CONF_PORT, DEFAULT_PORT)): vol.All(
-                int, vol.Range(min=1024, max=65535)
+                int, vol.Range(min=1, max=65535)
             ),
             vol.Required(
                 CONF_UPDATE_INTERVAL,
@@ -165,7 +166,7 @@ class FroniusVirtualInverterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
 
         if user_input is not None:
             name = user_input[CONF_NAME]
-            port = user_input[CONF_PORT]
+            port = int(user_input[CONF_PORT])
 
             # Check for duplicate name
             await self.async_set_unique_id(name)
@@ -174,6 +175,11 @@ class FroniusVirtualInverterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
             # Check port availability
             if not await self.hass.async_add_executor_job(_port_available, port):
                 errors[CONF_PORT] = "port_in_use"
+
+            if user_input.get(CONF_MODBUS_ENABLED):
+                modbus_port = int(user_input[CONF_MODBUS_PORT])
+                if not await self.hass.async_add_executor_job(_port_available, modbus_port):
+                    errors[CONF_MODBUS_PORT] = "port_in_use"
 
             if not errors:
                 self._user_input = user_input
@@ -184,8 +190,9 @@ class FroniusVirtualInverterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_NAME, default=DEFAULT_NAME): selector.TextSelector(),
+                    vol.Optional(CONF_SYSTEM_NAME): selector.TextSelector(),
                     vol.Required(CONF_PORT, default=DEFAULT_PORT): selector.NumberSelector(
-                        selector.NumberSelectorConfig(min=1024, max=65535, mode="box")
+                        selector.NumberSelectorConfig(min=1, max=65535, mode="box")
                     ),
                     vol.Required(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): selector.NumberSelector(
                         selector.NumberSelectorConfig(min=5, max=300, step=1, unit_of_measurement="s", mode="box")
@@ -246,6 +253,15 @@ class FroniusVirtualInverterOptionsFlow(config_entries.OptionsFlow):
                 if not await self.hass.async_add_executor_job(_port_available, port):
                     errors[CONF_PORT] = "port_in_use"
 
+            modbus_enabled = bool(user_input.get(CONF_MODBUS_ENABLED, False))
+            modbus_port = int(user_input.get(CONF_MODBUS_PORT, current.get(CONF_MODBUS_PORT, DEFAULT_MODBUS_PORT)))
+            current_modbus_enabled = bool(current.get(CONF_MODBUS_ENABLED, False))
+            current_modbus_port = int(current.get(CONF_MODBUS_PORT, DEFAULT_MODBUS_PORT))
+
+            if modbus_enabled and (not current_modbus_enabled or modbus_port != current_modbus_port):
+                if not await self.hass.async_add_executor_job(_port_available, modbus_port):
+                    errors[CONF_MODBUS_PORT] = "port_in_use"
+
             if not errors:
                 data = {k: v for k, v in user_input.items() if v != "" and v is not None}
                 return self.async_create_entry(title="", data=data)
@@ -253,11 +269,12 @@ class FroniusVirtualInverterOptionsFlow(config_entries.OptionsFlow):
         schema = vol.Schema(
             {
                 vol.Optional(CONF_PORT, default=current.get(CONF_PORT, DEFAULT_PORT)): selector.NumberSelector(
-                    selector.NumberSelectorConfig(min=1024, max=65535, mode="box")
+                    selector.NumberSelectorConfig(min=1, max=65535, mode="box")
                 ),
                 vol.Optional(CONF_UPDATE_INTERVAL, default=current.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=5, max=300, step=1, unit_of_measurement="s", mode="box")
                 ),
+                vol.Optional(CONF_SYSTEM_NAME, description={"suggested_value": current.get(CONF_SYSTEM_NAME)}): selector.TextSelector(),
                 # Modbus Smart Meter IP emulation
                 vol.Optional(CONF_MODBUS_ENABLED, default=current.get(CONF_MODBUS_ENABLED, False)): selector.BooleanSelector(),
                 vol.Optional(CONF_MODBUS_PORT, default=current.get(CONF_MODBUS_PORT, DEFAULT_MODBUS_PORT)): selector.NumberSelector(
