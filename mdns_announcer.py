@@ -1,7 +1,6 @@
 """mDNS announcer for Fronius Virtual Inverter."""
 from __future__ import annotations
 
-import json
 import logging
 import socket
 from typing import TYPE_CHECKING
@@ -17,11 +16,11 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 MDNS_HTTP_TYPE = "_http._tcp.local."
-FRONIUS_SE_TYPE = "_Fronius-SE-Wattpilot._tcp.local."
 
 FRONIUS_TXT_RECORDS: dict[bytes, bytes] = {
     b"devicetype": b"fronius_datamanager_2_0",
     b"server": b"Fronius",
+    b"FSED-DID": b"V 1|P JSON|PFC 2",
 }
 
 
@@ -35,50 +34,21 @@ def _get_local_ip() -> str:
         return "127.0.0.1"
 
 
-def _build_fronius_se_txt(name: str, serial: str) -> dict[bytes, bytes]:
-    meta = {
-        "DeviceMeta": {
-            "Network": {"PrimaryNetworkInterface": "eth0"},
-            "Device-Information": {
-                "Systemname": name,
-                "DeviceSerialNumber": serial,
-                "DeviceGroup": "Fronius Datamanager 2.0",
-                "ArticleNumber": "4,240,100",
-                "CommonName": f"Datamanager_{serial}",
-                "Manufacturer": "Fronius",
-                "SoftwareBundleVersion": "3.4.0-102",
-                "HardwareRevision": "2.0",
-                "CommissioningCompleted": "true"
-            },
-            "Connections": []
-        },
-        "ZeroconfMetaVersion": "1.0"
-    }
-    full = json.dumps(meta, separators=(',', ':')).encode('utf-8')
-    chunks = [full[i:i + 250] for i in range(0, len(full), 250)]
-    result: dict[bytes, bytes] = {b"FSED-DID": b"V 1|P JSON|PFC 2"}
-    for i, chunk in enumerate(chunks):
-        result[f"{i:02d}".encode()] = chunk
-    return result
-
-
 class FroniusMDNSAnnouncer:
     """Announces the virtual inverter via mDNS using HA's shared Zeroconf instance."""
 
-    def __init__(self, name: str, port: int, serial: str) -> None:
+    def __init__(self, name: str, port: int) -> None:
         self._name = name
         self._port = port
-        self._serial = serial
         self._zeroconf: AsyncZeroconf | None = None
-        self._service_info_http: ServiceInfo | None = None
-        self._service_info_se: ServiceInfo | None = None
+        self._service_info: ServiceInfo | None = None
 
     async def async_start(self, hass: HomeAssistant) -> None:
-        """Register both mDNS services using HA's shared Zeroconf instance."""
+        """Register the mDNS service using HA's shared Zeroconf instance."""
         local_ip = _get_local_ip()
         ip_bytes = socket.inet_aton(local_ip)
 
-        self._service_info_http = ServiceInfo(
+        self._service_info = ServiceInfo(
             type_=MDNS_HTTP_TYPE,
             name=f"{self._name}.{MDNS_HTTP_TYPE}",
             addresses=[ip_bytes],
@@ -87,34 +57,21 @@ class FroniusMDNSAnnouncer:
             server=f"{self._name}.local.",
         )
 
-        self._service_info_se = ServiceInfo(
-            type_=FRONIUS_SE_TYPE,
-            name=f"{self._name}.{FRONIUS_SE_TYPE}",
-            addresses=[ip_bytes],
-            port=80,
-            properties=_build_fronius_se_txt(self._name, self._serial),
-            server=f"{self._name}.local.",
-        )
-
         self._zeroconf = await async_get_instance(hass)
-        await self._zeroconf.async_register_service(self._service_info_http)
-        await self._zeroconf.async_register_service(self._service_info_se)
+        await self._zeroconf.async_register_service(self._service_info)
         _LOGGER.info(
-            "mDNS: Announced '%s' at %s:%d (%s + %s)",
+            "mDNS: Announced '%s' at %s:%d (type: %s)",
             self._name,
             local_ip,
             self._port,
             MDNS_HTTP_TYPE,
-            FRONIUS_SE_TYPE,
         )
 
     async def async_stop(self) -> None:
-        """Unregister both mDNS services. Does NOT close the shared Zeroconf instance."""
-        if self._zeroconf:
-            for info in (self._service_info_http, self._service_info_se):
-                if info is not None:
-                    try:
-                        await self._zeroconf.async_unregister_service(info)
-                    except Exception as err:
-                        _LOGGER.debug("Error unregistering mDNS service: %s", err)
+        """Unregister the mDNS service. Does NOT close the shared Zeroconf instance."""
+        if self._service_info and self._zeroconf:
+            try:
+                await self._zeroconf.async_unregister_service(self._service_info)
+            except Exception as err:
+                _LOGGER.debug("Error unregistering mDNS service: %s", err)
         _LOGGER.info("mDNS announcement stopped")

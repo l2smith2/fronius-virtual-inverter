@@ -84,7 +84,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ) from err
 
     # ── mDNS announcer ─────────────────────────────────────────────────────
-    mdns = FroniusMDNSAnnouncer(name=name, port=port, serial=serial)
+    mdns = FroniusMDNSAnnouncer(name=name, port=port)
     try:
         await mdns.async_start(hass)
     except Exception as err:
