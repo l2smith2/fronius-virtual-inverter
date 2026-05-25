@@ -19,9 +19,9 @@ _LOGGER = logging.getLogger(__name__)
 MDNS_HTTP_TYPE = "_http._tcp.local."
 FRONIUS_SE_TYPE = "_Fronius-SE-Wattpilot._tcp.local."
 
-FRONIUS_TXT_RECORDS = {
-    "devicetype": "fronius_datamanager_2_0",
-    "server": "Fronius",
+FRONIUS_TXT_RECORDS: dict[bytes, bytes] = {
+    b"devicetype": b"fronius_datamanager_2_0",
+    b"server": b"Fronius",
 }
 
 
@@ -35,12 +35,10 @@ def _get_local_ip() -> str:
         return "127.0.0.1"
 
 
-def _build_fronius_se_txt(name: str, serial: str) -> dict:
+def _build_fronius_se_txt(name: str, serial: str) -> dict[bytes, bytes]:
     meta = {
         "DeviceMeta": {
-            "Network": {
-                "PrimaryNetworkInterface": "eth0"
-            },
+            "Network": {"PrimaryNetworkInterface": "eth0"},
             "Device-Information": {
                 "Systemname": name,
                 "DeviceSerialNumber": serial,
@@ -56,12 +54,12 @@ def _build_fronius_se_txt(name: str, serial: str) -> dict:
         },
         "ZeroconfMetaVersion": "1.0"
     }
-    full = json.dumps(meta, separators=(',', ':'))
-    return {
-        "FSED-DID": "V 1|P JSON|PFC 2",
-        "00": full[:255],
-        "01": full[255:],
-    }
+    full = json.dumps(meta, separators=(',', ':')).encode('utf-8')
+    chunks = [full[i:i + 250] for i in range(0, len(full), 250)]
+    result: dict[bytes, bytes] = {b"FSED-DID": b"V 1|P JSON|PFC 2"}
+    for i, chunk in enumerate(chunks):
+        result[f"{i:02d}".encode()] = chunk
+    return result
 
 
 class FroniusMDNSAnnouncer:
