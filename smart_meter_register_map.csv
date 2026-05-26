@@ -1,0 +1,88 @@
+Smart Meter Register Map with Float AC-Meter Model,,,,,,,,,,
+Start,End,Size,R/W,Function
+codes,Name,Description,Type,Units,Scale Factor,Range
+of values
+40001,40002,2,R,0x03,SID,Well-known value. Uniquely identifies this as a SunSpec Modbus Map,uint32,,,0x53756e53 ('SunS')
+Start,End,Size,R/W,Function
+codes,Name,Description,Type,Units,Scale Factor,Range
+of values
+40003,40003,1,R,0x03,ID,Well-known value. Uniquely identifies this as a sunspec model common (1),uint16,,,1
+40004,40004,1,R,0x03,L,Length of sunspec model common (1),uint16,Registers,,65
+40005,40020,16,R,0x03,Mn,Smart Meter Manufacturer,string,,,e.g. "Fronius"
+40021,40036,16,R,0x03,Md,Smart Meter Model,string,,,e.g. "Smart Meter 63A"
+40037,40044,8,R,0x03,Opt,Smart Meter Name,string,,,e.g. "<primary>"
+40045,40052,8,R,0x03,Vr,SW version of ,string,,,e.g. "2.9"
+40053,40068,16,R,0x03,SN,Smart Meter Serialnumber,string,,,e.g. "18370117"
+40069,40069,1,R,0x03,DA,Modbus Device Address,uint16,,,1 - 247
+Start,End,Size,R/W,Function
+codes,Name,Description,Type,Units,Scale Factor,Range
+of values
+40070,40070,1,R,0x03,ID,Well-known value. Uniquely identifies this as a sunspec model ac_meter (21x),uint16,,,211: Single Phase (AN or AB), 212: Split Single Phase (ABN), 213: WYE-Connect Three Phase (ABCN), 214: Delta-Connect Three Phase (ABC)
+40071,40071,1,R,0x03,L,Length of sunspec model ac_meter (21x),uint16,Registers,,124
+40072,40073,2,R,0x03,A,Total AC Current,float32,A,,
+40074,40075,2,R,0x03,AphA,Phase A Current,float32,A,,
+40076,40077,2,R,0x03,AphB,Phase B Current,float32,A,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40078,40079,2,R,0x03,AphC,Phase C Current,float32,A,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40080,40081,2,R,0x03,PhV,Line to Neutral AC Voltage (average of active phases),float32,V,,
+40082,40083,2,R,0x03,PhVphA,Phase Voltage AN,float32,V,,
+40084,40085,2,R,0x03,PhVphB,Phase Voltage BN,float32,V,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40086,40087,2,R,0x03,PhVphC,Phase Voltage CN,float32,V,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40088,40089,2,R,0x03,PPV,Line to Line AC Voltage (average of active phases),float32,V,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40090,40091,2,R,0x03,PPVphAB,Phase Voltage AB,float32,V,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40092,40093,2,R,0x03,PPVphBC,Phase Voltage BC,float32,V,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40094,40095,2,R,0x03,PPVphCA,Phase Voltage CA,float32,V,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40096,40097,2,R,0x03,Hz,Frequency,float32,Hz,,
+40098,40099,2,R,0x03,W,Total Real Power,float32,W,,
+40100,40101,2,R,0x03,WphA,Watts phase A,float32,W,,
+40102,40103,2,R,0x03,WphB,Watts phase B,float32,W,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40104,40105,2,R,0x03,WphC,Watts phase C,float32,W,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40106,40107,2,R,0x03,VA,AC Apparent Power,float32,VA,,
+40108,40109,2,R,0x03,VAphA,VA phase A,float32,VA,,
+40110,40111,2,R,0x03,VAphB,VA phase B,float32,VA,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40112,40113,2,R,0x03,VAphC,VA phase C,float32,VA,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40114,40115,2,R,0x03,VAR,Reactive Power,float32,var,,
+40116,40117,2,R,0x03,VARphA,VAR phase A,float32,var,,
+40118,40119,2,R,0x03,VARphB,VAR phase B,float32,var,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40120,40121,2,R,0x03,VARphC,VAR phase C,float32,var,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40122,40123,2,R,0x03,PF,Power Factor,float32,PF,,
+40124,40125,2,R,0x03,PFphA,PF phase A,float32,PF,,
+40126,40127,2,R,0x03,PFphB,PF phase B,float32,PF,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40128,40129,2,R,0x03,PFphC,PF phase C,float32,PF,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40130,40131,2,R,0x03,TotWhExp,Total Real Energy Exported,float32,Wh,,
+40132,40133,2,R,0x03,TotWhExpPhA,Total Watt-hours Exported phase A,float32,Wh,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40134,40135,2,R,0x03,TotWhExpPhB,Total Watt-hours Exported phase B,float32,Wh,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40136,40137,2,R,0x03,TotWhExpPhC,Total Watt-hours Exported phase C,float32,Wh,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40138,40139,2,R,0x03,TotWhImp,Total Real Energy Imported,float32,Wh,,
+40140,40141,2,R,0x03,TotWhImpPhA,Total Watt-hours Imported phase A,float32,Wh,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40142,40143,2,R,0x03,TotWhImpPhB,Total Watt-hours Imported phase B,float32,Wh,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40144,40145,2,R,0x03,TotWhImpPhC,Total Watt-hours Imported phase C,float32,Wh,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40146,40147,2,R,0x03,TotVAhExp,Total Apparent Energy Exported,float32,VAh,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40148,40149,2,R,0x03,TotVAhExpPhA,Total VA-hours Exported phase A,float32,VAh,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40150,40151,2,R,0x03,TotVAhExpPhB,Total VA-hours Exported phase B,float32,VAh,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40152,40153,2,R,0x03,TotVAhExpPhC,Total VA-hours Exported phase C,float32,VAh,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40154,40155,2,R,0x03,TotVAhImp,Total Apparent Energy Imported,float32,VAh,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40156,40157,2,R,0x03,TotVAhImpPhA,Total VA-hours Imported phase A,float32,VAh,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40158,40159,2,R,0x03,TotVAhImpPhB,Total VA-hours Imported phase B,float32,VAh,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40160,40161,2,R,0x03,TotVAhImpPhC,Total VA-hours Imported phase C,float32,VAh,,This data-point is supported/not-supported depending on the grid connection and/or used smart meter.
+40162,40163,2,R,0x03,TotVArhImpQ1,Total Reactive Energy Imported Quadrant 1,float32,varh,,not supported
+40164,40165,2,R,0x03,TotVArhImpQ1phA,Total VAr-hours Imported Q1 phase A,float32,varh,,not supported
+40166,40167,2,R,0x03,TotVArhImpQ1phB,Total VAr-hours Imported Q1 phase B,float32,varh,,not supported
+40168,40169,2,R,0x03,TotVArhImpQ1phC,Total VAr-hours Imported Q1 phase C,float32,varh,,not supported
+40170,40171,2,R,0x03,TotVArhImpQ2,Total Reactive Power Imported Quadrant 2,float32,varh,,not supported
+40172,40173,2,R,0x03,TotVArhImpQ2phA,Total VAr-hours Imported Q2 phase A,float32,varh,,not supported
+40174,40175,2,R,0x03,TotVArhImpQ2phB,Total VAr-hours Imported Q2 phase B,float32,varh,,not supported
+40176,40177,2,R,0x03,TotVArhImpQ2phC,Total VAr-hours Imported Q2 phase C,float32,varh,,not supported
+40178,40179,2,R,0x03,TotVArhExpQ3,Total Reactive Power Exported Quadrant 3,float32,varh,,not supported
+40180,40181,2,R,0x03,TotVArhExpQ3phA,Total VAr-hours Exported Q3 phase A,float32,varh,,not supported
+40182,40183,2,R,0x03,TotVArhExpQ3phB,Total VAr-hours Exported Q3 phase B,float32,varh,,not supported
+40184,40185,2,R,0x03,TotVArhExpQ3phC,Total VAr-hours Exported Q3 phase C,float32,varh,,not supported
+40186,40187,2,R,0x03,TotVArhExpQ4,Total Reactive Power Exported Quadrant 4,float32,varh,,not supported
+40188,40189,2,R,0x03,TotVArhExpQ4phA,Total VAr-hours Exported Q4 Imported phase A,float32,varh,,not supported
+40190,40191,2,R,0x03,TotVArhExpQ4phB,Total VAr-hours Exported Q4 Imported phase B,float32,varh,,not supported
+40192,40193,2,R,0x03,TotVArhExpQ4phC,Total VAr-hours Exported Q4 Imported phase C,float32,varh,,not supported
+40194,40195,2,R,0x03,Evt,Meter Event Flags,bitfield32,,,currently hardcoded to zero
+Start,End,Size,R/W,Function
+codes,Name,Description,Type,Units,Scale Factor,Range
+of values
+40196,40196,1,R,0x03,ID,Identifies this as End block,uint16,,,0xFFFF
+40197,40197,1,R,0x03,L,Length of model block,uint16,,,0x0
