@@ -66,25 +66,6 @@ def _encode_name(name: str) -> bytes:
     return result + b"\x00"
 
 
-def _decode_name(data: bytes, offset: int) -> tuple[str, int]:
-    """Decode a DNS name from wire format, following compression pointers."""
-    labels: list[str] = []
-    while offset < len(data):
-        length = data[offset]
-        if length == 0:
-            offset += 1
-            break
-        if (length & 0xC0) == 0xC0:
-            pointer = ((length & 0x3F) << 8) | data[offset + 1]
-            suffix, _ = _decode_name(data, pointer)
-            labels.append(suffix.rstrip("."))
-            offset += 2
-            return ".".join(labels) + ".", offset
-        offset += 1
-        labels.append(data[offset : offset + length].decode("ascii", errors="replace"))
-        offset += length
-    return ".".join(labels) + ".", offset
-
 
 def _rr(name: bytes, rtype: int, rclass: int, ttl: int, rdata: bytes) -> bytes:
     """Build a single DNS resource record."""
@@ -126,71 +107,22 @@ def _build_packet(
     return header + ptr + srv + txt_rr + a_rr
 
 
-# ── Raw mDNS protocol / socket ────────────────────────────────────────────────
-
-class _MDNSProtocol(asyncio.DatagramProtocol):
-    """asyncio DatagramProtocol that handles mDNS sends and query responses."""
-
-    def __init__(self, packets: list[bytes], service_types: set[str]) -> None:
-        self._packets = packets
-        self._service_types = service_types  # lowercased, no trailing dot
-        self._transport: asyncio.DatagramTransport | None = None
-
-    def connection_made(self, transport: asyncio.BaseTransport) -> None:
-        self._transport = transport  # type: ignore[assignment]
-
-    def send_all(self) -> None:
-        if self._transport is None:
-            return
-        for pkt in self._packets:
-            self._transport.sendto(pkt, (MDNS_ADDR, MDNS_PORT))
-
-    def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
-        if len(data) < 12:
-            return
-        try:
-            _id, flags, qdcount = struct.unpack_from(">HHH", data, 0)
-        except struct.error:
-            return
-        if flags & 0x8000:  # ignore responses
-            return
-
-        offset = 12
-        for _ in range(qdcount):
-            if offset >= len(data):
-                break
-            try:
-                name, offset = _decode_name(data, offset)
-                qtype, _qclass = struct.unpack_from(">HH", data, offset)
-                offset += 4
-            except Exception:
-                break
-            if qtype == _TYPE_PTR and name.lower().rstrip(".") in self._service_types:
-                self.send_all()
-                return
-
-    def error_received(self, exc: Exception) -> None:
-        _LOGGER.debug("mDNS socket error: %s", exc)
-
-    def connection_lost(self, exc: Exception | None) -> None:
-        pass
-
+# ── Raw mDNS announcer (send-only, ephemeral port) ───────────────────────────
 
 class RawMDNSAnnouncer:
     """Announces Fronius-SE service types via raw UDP multicast.
 
     Bypasses zeroconf's 15-byte label limit by building DNS packets directly.
-    Announces both _Fronius-SE-Inverter._tcp.local. and
-    _Fronius-SE-SmartMeter._tcp.local. every 1 second, and responds to
-    incoming PTR queries for those types.
+    Uses an ephemeral source port so it never conflicts with HA's zeroconf
+    daemon on port 5353.  Send-only: no receive/query-response support.
     """
 
     def __init__(self, name: str, port: int, serial: str) -> None:
         self._name = name
         self._port = port
         self._serial = serial
-        self._transport: asyncio.DatagramTransport | None = None
-        self._protocol: _MDNSProtocol | None = None
+        self._sock: socket.socket | None = None
+        self._packets: list[bytes] = []
         self._task: asyncio.Task | None = None
 
     def _make_txt(self, local_ip: str) -> bytes:
@@ -213,39 +145,20 @@ class RawMDNSAnnouncer:
         return _txt_rdata(entries)
 
     async def async_start(self) -> None:
-        """Create the multicast socket and start announcing."""
+        """Create the send-only multicast socket and start announcing."""
         local_ip = _get_local_ip()
         ip_bytes = socket.inet_aton(local_ip)
         hostname = f"{self._name}.local."
         txt = self._make_txt(local_ip)
 
-        service_types = [FRONIUS_SE_INVERTER_TYPE, FRONIUS_SE_METER_TYPE]
-        packets = [
+        self._packets = [
             _build_packet(self._name, svc, hostname, self._port, ip_bytes, txt)
-            for svc in service_types
+            for svc in (FRONIUS_SE_INVERTER_TYPE, FRONIUS_SE_METER_TYPE)
         ]
 
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        except AttributeError:
-            pass
-        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
-        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
-        sock.bind(("", MDNS_PORT))
-        mreq = socket.inet_aton(MDNS_ADDR) + socket.inet_aton("0.0.0.0")
-        sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-        sock.setblocking(False)
-
-        svc_set = {s.lower().rstrip(".") for s in service_types}
-        self._protocol = _MDNSProtocol(packets, svc_set)
-
-        loop = asyncio.get_running_loop()
-        self._transport, _ = await loop.create_datagram_endpoint(
-            lambda: self._protocol,
-            sock=sock,
-        )
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
+        self._sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
 
         self._task = asyncio.create_task(self._announce_loop())
         _LOGGER.info(
@@ -259,8 +172,9 @@ class RawMDNSAnnouncer:
 
     async def _announce_loop(self) -> None:
         while True:
-            if self._protocol is not None:
-                self._protocol.send_all()
+            if self._sock is not None:
+                for pkt in self._packets:
+                    self._sock.sendto(pkt, (MDNS_ADDR, MDNS_PORT))
             await asyncio.sleep(1)
 
     async def async_stop(self) -> None:
@@ -272,9 +186,9 @@ class RawMDNSAnnouncer:
             except asyncio.CancelledError:
                 pass
             self._task = None
-        if self._transport:
-            self._transport.close()
-            self._transport = None
+        if self._sock:
+            self._sock.close()
+            self._sock = None
         _LOGGER.info("Raw mDNS announcer stopped")
 
 
