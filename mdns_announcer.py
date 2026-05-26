@@ -159,8 +159,14 @@ class RawMDNSAnnouncer:
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
         self._sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
+        self._sock.setsockopt(
+            socket.IPPROTO_IP,
+            socket.IP_MULTICAST_IF,
+            socket.inet_aton(local_ip),
+        )
 
         self._task = asyncio.create_task(self._announce_loop())
+        _LOGGER.warning("RawMDNSAnnouncer sending from %s to 224.0.0.251:5353", local_ip)
         _LOGGER.info(
             "Raw mDNS: announcing '%s' at %s:%d for %s and %s",
             self._name,
