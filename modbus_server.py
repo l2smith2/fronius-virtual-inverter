@@ -34,45 +34,45 @@ Register layout (SunSpec model 213, unit_id=240):
   40090-40091  PhVphAB float32
   40092-40093  PhVphBC float32
   40094-40095  PhVphCA float32
-  40096        Hz uint16 (0.01 Hz, so 5000 = 50.00 Hz) ← 1 register only
-  40097-40098  W  float32           ← TOTAL REAL POWER (key register!)
-  40099-40100  WphA float32
-  40101-40102  WphB float32
-  40103-40104  WphC float32
-  40105-40106  VA float32
-  40107-40108  VAphA float32
-  40109-40110  VAphB float32
-  40111-40112  VAphC float32
-  40113-40114  VAR float32
-  40115-40116  VARphA float32
-  40117-40118  VARphB float32
-  40119-40120  VARphC float32
-  40121-40122  PF float32
-  40123-40124  PFphA float32
-  40125-40126  PFphB float32
-  40127-40128  PFphC float32
-  40129-40130  TotWhExp float32     ← total exported energy Wh
-  40131-40132  TotWhExpphA float32
-  40133-40134  TotWhExpphB float32
-  40135-40136  TotWhExpphC float32
-  40137-40138  TotWhImp float32     ← total imported energy Wh
-  40139-40140  TotWhImpphA float32
-  40141-40142  TotWhImpphB float32
-  40143-40144  TotWhImpphC float32
-  40145-40146  TotVAhExp float32
-  40147-40148  TotVAhExpphA float32
-  40149-40150  TotVAhExpphB float32
-  40151-40152  TotVAhExpphC float32
-  40153-40154  TotVAhImp float32
-  40155-40156  TotVAhImpphA float32
-  40157-40158  TotVAhImpphB float32
-  40159-40160  TotVAhImpphC float32
-  40161-40162  TotVArhImpQ1 float32
+  40096-40097  Hz float32           ← 50.0 Hz
+  40098-40099  W  float32           ← TOTAL REAL POWER (key register!)
+  40100-40101  WphA float32
+  40102-40103  WphB float32
+  40104-40105  WphC float32
+  40106-40107  VA float32
+  40108-40109  VAphA float32
+  40110-40111  VAphB float32
+  40112-40113  VAphC float32
+  40114-40115  VAR float32
+  40116-40117  VARphA float32
+  40118-40119  VARphB float32
+  40120-40121  VARphC float32
+  40122-40123  PF float32
+  40124-40125  PFphA float32
+  40126-40127  PFphB float32
+  40128-40129  PFphC float32
+  40130-40131  TotWhExp float32     ← total exported energy Wh
+  40132-40133  TotWhExpphA float32
+  40134-40135  TotWhExpphB float32
+  40136-40137  TotWhExpphC float32
+  40138-40139  TotWhImp float32     ← total imported energy Wh
+  40140-40141  TotWhImpphA float32
+  40142-40143  TotWhImpphB float32
+  40144-40145  TotWhImpphC float32
+  40146-40147  TotVAhExp float32
+  40148-40149  TotVAhExpphA float32
+  40150-40151  TotVAhExpphB float32
+  40152-40153  TotVAhExpphC float32
+  40154-40155  TotVAhImp float32
+  40156-40157  TotVAhImpphA float32
+  40158-40159  TotVAhImpphB float32
+  40160-40161  TotVAhImpphC float32
+  40162-40163  TotVArhImpQ1 float32
   ...  (VAr quadrant registers, 16 floats, zeroed)
-  40191-40192  TotVArhExpQ4PhC float32
-  40193-40194  Evt (events) uint32 = 0
-  40195        End model ID = 0xFFFF
-  40196        End block L = 0x0000
+  40192-40193  TotVArhExpQ4PhC float32
+  40194-40195  Evt (events) uint32 = 0
+  40196        End model ID = 0xFFFF
+  40197        End block L = 0x0000
 
 Sign convention: W positive = importing from grid, negative = exporting.
 This matches Fronius convention (same as P_Grid in Solar API).
@@ -178,7 +178,7 @@ class FroniusSmartMeterModbusServer:
         try:
             while True:
                 # Modbus TCP frame: 6-byte MBAP header + PDU
-                header = await reader.read(6)
+                header = await reader.readexactly(6)
                 if not header or len(header) < 6:
                     break
 
@@ -186,7 +186,7 @@ class FroniusSmartMeterModbusServer:
                 # protocol_id = (header[2] << 8) | header[3]  # always 0
                 length = (header[4] << 8) | header[5]
 
-                pdu = await reader.read(length)
+                pdu = await reader.readexactly(length)
                 if not pdu or len(pdu) < length:
                     break
 
@@ -240,10 +240,7 @@ class FroniusSmartMeterModbusServer:
 
     def _mbap(self, transaction_id: int, pdu: bytes) -> bytes:
         """Build a Modbus TCP MBAP header around a PDU."""
-        length = len(pdu)
-        return struct.pack(">HHHB", transaction_id, 0, length, 0)[:-1] + bytes([pdu[0]]) + pdu[1:] if False else (
-            struct.pack(">HHH", transaction_id, 0, length) + pdu
-        )
+        return struct.pack(">HHH", transaction_id, 0, len(pdu)) + pdu
 
     def _read_registers(self, start_addr: int, count: int) -> bytes | None:
         """
@@ -330,59 +327,60 @@ class FroniusSmartMeterModbusServer:
         set_float(40091, 400.0)   # PhVphBC
         set_float(40093, 400.0)   # PhVphCA
 
-        # Frequency — uint16 (1 register), 0.01 Hz units; wire 40095 = reg 40096
-        set_uint16(40095, 5000)   # Hz = 50.00 Hz
+        # Frequency (float32): reg 40096-40097 = wire 40095-40096
+        set_float(40095, 50.0)    # Hz
 
         # ── THE KEY REGISTER: W = total real power ────────────────────────
-        # wire 40096-40097 = reg 40097-40098; positive = importing, negative = exporting
-        set_float(40096, p_grid)       # W
-        set_float(40098, p_grid / 3)   # WphA
-        set_float(40100, p_grid / 3)   # WphB
-        set_float(40102, p_grid / 3)   # WphC
+        # reg 40098-40099 = wire 40097-40098; positive = importing, negative = exporting
+        set_float(40097, p_grid)       # W
+        set_float(40099, p_grid / 3)   # WphA
+        set_float(40101, p_grid / 3)   # WphB
+        set_float(40103, p_grid / 3)   # WphC
 
-        # VA (apparent power)
-        set_float(40104, abs(p_grid))       # VA
-        set_float(40106, abs(p_grid) / 3)   # VAphA
-        set_float(40108, abs(p_grid) / 3)   # VAphB
-        set_float(40110, abs(p_grid) / 3)   # VAphC
+        # VA (apparent power): reg 40106-40107 = wire 40105-40106
+        set_float(40105, abs(p_grid))       # VA
+        set_float(40107, abs(p_grid) / 3)   # VAphA
+        set_float(40109, abs(p_grid) / 3)   # VAphB
+        set_float(40111, abs(p_grid) / 3)   # VAphC
 
-        # VAR (reactive power — zero)
-        set_float(40112, 0.0)   # VAR
-        set_float(40114, 0.0)   # VARphA
-        set_float(40116, 0.0)   # VARphB
-        set_float(40118, 0.0)   # VARphC
+        # VAR (reactive power — zero): reg 40114-40115 = wire 40113-40114
+        set_float(40113, 0.0)   # VAR
+        set_float(40115, 0.0)   # VARphA
+        set_float(40117, 0.0)   # VARphB
+        set_float(40119, 0.0)   # VARphC
 
-        # Power factor
+        # Power factor: reg 40122-40123 = wire 40121-40122
         pf = 1.0 if p_grid == 0 else 1.0
-        set_float(40120, pf)   # PF
-        set_float(40122, pf)   # PFphA
-        set_float(40124, pf)   # PFphB
-        set_float(40126, pf)   # PFphC
+        set_float(40121, pf)   # PF
+        set_float(40123, pf)   # PFphA
+        set_float(40125, pf)   # PFphB
+        set_float(40127, pf)   # PFphC
 
-        # Energy registers (Wh) — wire 40128 = reg 40129 for TotWhExp
-        set_float(40128, tot_wh_exp)        # TotWhExp
-        set_float(40130, tot_wh_exp / 3)    # TotWhExpphA
-        set_float(40132, tot_wh_exp / 3)    # TotWhExpphB
-        set_float(40134, tot_wh_exp / 3)    # TotWhExpphC
+        # Energy registers (Wh): TotWhExp at reg 40130-40131 = wire 40129-40130
+        set_float(40129, tot_wh_exp)        # TotWhExp
+        set_float(40131, tot_wh_exp / 3)    # TotWhExpPhA
+        set_float(40133, tot_wh_exp / 3)    # TotWhExpPhB
+        set_float(40135, tot_wh_exp / 3)    # TotWhExpPhC
 
-        set_float(40136, tot_wh_imp)        # TotWhImp — wire 40136 = reg 40137
-        set_float(40138, tot_wh_imp / 3)    # TotWhImpphA
-        set_float(40140, tot_wh_imp / 3)    # TotWhImpphB
-        set_float(40142, tot_wh_imp / 3)    # TotWhImpphC
+        # TotWhImp at reg 40138-40139 = wire 40137-40138
+        set_float(40137, tot_wh_imp)        # TotWhImp
+        set_float(40139, tot_wh_imp / 3)    # TotWhImpPhA
+        set_float(40141, tot_wh_imp / 3)    # TotWhImpPhB
+        set_float(40143, tot_wh_imp / 3)    # TotWhImpPhC
 
-        # VAh export/import (zero) — 8 floats at wire 40144-40159
-        for addr in range(40144, 40160, 2):
+        # VAh export/import (zero) — 8 floats, reg 40146-40161 = wire 40145-40160
+        for addr in range(40145, 40161, 2):
             set_float(addr, 0.0)
 
-        # VAr quadrant registers (zero) — 16 floats at wire 40160-40191
-        for addr in range(40160, 40192, 2):
+        # VAr quadrant registers (zero) — 16 floats, reg 40162-40193 = wire 40161-40192
+        for addr in range(40161, 40193, 2):
             set_float(addr, 0.0)
 
-        # Events uint32 = 0 at wire 40192-40193
-        set_uint32(40192, 0)
+        # Events uint32 = 0: reg 40194-40195 = wire 40193-40194
+        set_uint32(40193, 0)
 
-        # End block: reg 40195 = 0xFFFF (wire 40194), reg 40196 = 0x0000 (wire 40195)
-        set_uint16(40194, SUNSPEC_END)
-        set_uint16(40195, 0)
+        # End block: reg 40196 = 0xFFFF (wire 40195), reg 40197 = 0x0000 (wire 40196)
+        set_uint16(40195, SUNSPEC_END)
+        set_uint16(40196, 0)
 
         return regs
