@@ -36,6 +36,7 @@ FRONIUS_TXT_RECORDS: dict[bytes, bytes] = {
 
 # DNS record types
 _TYPE_A = 1
+_TYPE_AAAA = 28
 _TYPE_PTR = 12
 _TYPE_TXT = 16
 _TYPE_SRV = 33
@@ -56,6 +57,30 @@ def _get_local_ip() -> str:
             return s.getsockname()[0]
     except Exception:
         return "127.0.0.1"
+
+
+def _get_link_local_ipv6(iface: str) -> bytes | None:
+    """Return the 16-byte packed link-local IPv6 address for the given interface."""
+    try:
+        result = subprocess.run(
+            ["ip", "-6", "addr", "show", "dev", iface, "scope", "link"],
+            capture_output=True, text=True, timeout=2,
+        )
+        match = re.search(r"inet6\s+(fe80[^/\s]+)", result.stdout)
+        if match:
+            addr = match.group(1).split("%")[0]
+            return socket.inet_pton(socket.AF_INET6, addr)
+    except Exception:
+        pass
+    # Fallback: getaddrinfo
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET6):
+            addr = info[4][0]
+            if addr.lower().startswith("fe80"):
+                return socket.inet_pton(socket.AF_INET6, addr.split("%")[0])
+    except Exception:
+        pass
+    return None
 
 
 def _get_multicast_iface() -> str:
@@ -103,10 +128,15 @@ def _build_packet(
     port: int,
     ip_bytes: bytes,
     txt: bytes,
+    *,
+    use_ipv6: bool = False,
+    ip6_bytes: bytes | None = None,
 ) -> bytes:
     """Build a complete mDNS announcement packet for one service type.
 
-    PTR in answers (ANCOUNT=1), SRV+TXT+A in additionals (ARCOUNT=3).
+    PTR in answers (ANCOUNT=1), SRV+TXT+A/AAAA in additionals (ARCOUNT=3).
+    When use_ipv6=True and ip6_bytes is provided, the A record is replaced
+    with an AAAA record containing the link-local IPv6 address.
     """
     svc = _encode_name(service_type)
     inst = _encode_name(f"{instance_name}.{service_type}")
@@ -115,11 +145,15 @@ def _build_packet(
     ptr = _rr(svc, _TYPE_PTR, _CLASS_IN, 4500, inst)
     srv = _rr(inst, _TYPE_SRV, _CLASS_IN_FLUSH, 120, struct.pack(">HHH", 0, 0, port) + host)
     txt_rr = _rr(inst, _TYPE_TXT, _CLASS_IN_FLUSH, 4500, txt)
-    a_rr = _rr(host, _TYPE_A, _CLASS_IN_FLUSH, 120, ip_bytes)
+
+    if use_ipv6 and ip6_bytes is not None:
+        addr_rr = _rr(host, _TYPE_AAAA, _CLASS_IN_FLUSH, 120, ip6_bytes)
+    else:
+        addr_rr = _rr(host, _TYPE_A, _CLASS_IN_FLUSH, 120, ip_bytes)
 
     # ID=0, flags, QDCOUNT=0, ANCOUNT=1, NSCOUNT=0, ARCOUNT=3
     header = struct.pack(">HHHHHH", 0, _FLAGS_RESPONSE, 0, 1, 0, 3)
-    return header + ptr + srv + txt_rr + a_rr
+    return header + ptr + srv + txt_rr + addr_rr
 
 
 # ── Raw mDNS announcer (send-only, ephemeral port) ───────────────────────────
@@ -139,7 +173,8 @@ class RawMDNSAnnouncer:
         self._sock: socket.socket | None = None
         self._sock6: socket.socket | None = None
         self._iface: str = "eth0"
-        self._packets: list[bytes] = []
+        self._packets: list[bytes] = []    # IPv4 packets (A record)
+        self._packets6: list[bytes] = []   # IPv6 packets (AAAA record)
         self._task: asyncio.Task | None = None
 
     def _make_txt(self) -> bytes:
@@ -177,14 +212,35 @@ class RawMDNSAnnouncer:
         hostname = f"{self._name}.local."
         txt = self._make_txt()
 
+        # Determine outbound interface and link-local IPv6 address
+        loop = asyncio.get_running_loop()
+        self._iface = await loop.run_in_executor(None, _get_multicast_iface)
+        ip6_bytes = await loop.run_in_executor(None, _get_link_local_ipv6, self._iface)
+
+        # ── Build per-protocol packet lists ───────────────────────────────
         self._packets = [
             _build_packet(self._name, svc, hostname, self._port, ip_bytes, txt)
             for svc in (FRONIUS_SE_INVERTER_TYPE, FRONIUS_SE_METER_TYPE)
         ]
-
-        # Determine outbound interface for multicast routing
-        loop = asyncio.get_running_loop()
-        self._iface = await loop.run_in_executor(None, _get_multicast_iface)
+        if ip6_bytes is not None:
+            self._packets6 = [
+                _build_packet(
+                    self._name, svc, hostname, self._port, ip_bytes, txt,
+                    use_ipv6=True, ip6_bytes=ip6_bytes,
+                )
+                for svc in (FRONIUS_SE_INVERTER_TYPE, FRONIUS_SE_METER_TYPE)
+            ]
+            _LOGGER.warning(
+                "RawMDNSAnnouncer: link-local IPv6 = %s (iface=%s)",
+                socket.inet_ntop(socket.AF_INET6, ip6_bytes),
+                self._iface,
+            )
+        else:
+            self._packets6 = self._packets  # fallback: send IPv4 packets on IPv6 socket
+            _LOGGER.warning(
+                "RawMDNSAnnouncer: no link-local IPv6 found for iface=%s, AAAA fallback to A",
+                self._iface,
+            )
 
         # ── IPv4 socket ───────────────────────────────────────────────────
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -235,13 +291,14 @@ class RawMDNSAnnouncer:
             pass
 
         while True:
-            for pkt in self._packets:
-                if self._sock is not None:
+            if self._sock is not None:
+                for pkt in self._packets:
                     try:
                         self._sock.sendto(pkt, (MDNS_ADDR, MDNS_PORT))
                     except Exception as err:
                         _LOGGER.debug("IPv4 mDNS send error: %s", err)
-                if self._sock6 is not None:
+            if self._sock6 is not None:
+                for pkt in self._packets6:
                     try:
                         self._sock6.sendto(pkt, (MDNS_ADDR6, MDNS_PORT, 0, iface_idx))
                     except Exception as err:
