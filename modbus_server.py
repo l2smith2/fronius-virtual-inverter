@@ -5,7 +5,9 @@ Emulates a Fronius Smart Meter IP on port 502 (or configurable).
 The Fronius GEN24 / Wattpilot will discover this as a primary grid meter
 and use the W (real power) register for surplus charging decisions.
 
-Register layout (SunSpec float, unit_id=240):
+Register layout (SunSpec model 213, unit_id=240):
+  All numbers are Modbus register numbers (1-based); wire address = register - 1.
+
   40001-40002  SunS identifier (0x53756e53)
   40003        Common model ID = 1
   40004        Common model length = 65
@@ -15,9 +17,9 @@ Register layout (SunSpec float, unit_id=240):
   40045-40052  SW Version: "1.0.0"
   40053-40068  Serial number
   40069        Modbus device address = 240
-  40070        End-of-model marker for common block
+  (no end-of-common-block pad — meter model immediately follows)
 
-  Meter model (SunSpec model 213 = three-phase float):
+  Meter model (SunSpec model 213 = three-phase):
   40070        Model ID = 213
   40071        Length = 124
   40072-40073  A  (total current) float32
@@ -32,7 +34,7 @@ Register layout (SunSpec float, unit_id=240):
   40090-40091  PhVphAB float32
   40092-40093  PhVphBC float32
   40094-40095  PhVphCA float32
-  40096-40097  Hz float32           ← frequency
+  40096-40097  Hz float32           ← 50.0 Hz
   40098-40099  W  float32           ← TOTAL REAL POWER (key register!)
   40100-40101  WphA float32
   40102-40103  WphB float32
@@ -66,9 +68,11 @@ Register layout (SunSpec float, unit_id=240):
   40158-40159  TotVAhImpphB float32
   40160-40161  TotVAhImpphC float32
   40162-40163  TotVArhImpQ1 float32
-  ...  (VAr quadrant registers, zeroed)
-  40192-40193  Evt (events) uint32 = 0
-  40194        End model ID = 0xFFFF
+  ...  (VAr quadrant registers, 16 floats, zeroed)
+  40192-40193  TotVArhExpQ4PhC float32
+  40194-40195  Evt (events) uint32 = 0
+  40196        End model ID = 0xFFFF
+  40197        End block L = 0x0000
 
 Sign convention: W positive = importing from grid, negative = exporting.
 This matches Fronius convention (same as P_Grid in Solar API).
@@ -88,7 +92,7 @@ _LOGGER = logging.getLogger(__name__)
 # SunSpec constants
 SUNSPEC_SID = 0x53756e53  # 'SunS'
 SUNSPEC_END = 0xFFFF
-UNIT_ID_METER = 240  # Fronius Smart Meter IP default unit ID
+UNIT_ID_METER = 240  # Fronius Smart Meter IP unit ID (confirmed from GEN24)
 
 # Modbus function codes
 FC_READ_HOLDING = 0x03
@@ -174,7 +178,7 @@ class FroniusSmartMeterModbusServer:
         try:
             while True:
                 # Modbus TCP frame: 6-byte MBAP header + PDU
-                header = await reader.read(6)
+                header = await reader.readexactly(6)
                 if not header or len(header) < 6:
                     break
 
@@ -182,7 +186,7 @@ class FroniusSmartMeterModbusServer:
                 # protocol_id = (header[2] << 8) | header[3]  # always 0
                 length = (header[4] << 8) | header[5]
 
-                pdu = await reader.read(length)
+                pdu = await reader.readexactly(length)
                 if not pdu or len(pdu) < length:
                     break
 
@@ -236,10 +240,7 @@ class FroniusSmartMeterModbusServer:
 
     def _mbap(self, transaction_id: int, pdu: bytes) -> bytes:
         """Build a Modbus TCP MBAP header around a PDU."""
-        length = len(pdu)
-        return struct.pack(">HHHB", transaction_id, 0, length, 0)[:-1] + bytes([pdu[0]]) + pdu[1:] if False else (
-            struct.pack(">HHH", transaction_id, 0, length) + pdu
-        )
+        return struct.pack(">HHH", transaction_id, 0, len(pdu)) + pdu
 
     def _read_registers(self, start_addr: int, count: int) -> bytes | None:
         """
@@ -326,79 +327,60 @@ class FroniusSmartMeterModbusServer:
         set_float(40091, 400.0)   # PhVphBC
         set_float(40093, 400.0)   # PhVphCA
 
-        # Frequency
+        # Frequency (float32): reg 40096-40097 = wire 40095-40096
         set_float(40095, 50.0)    # Hz
 
         # ── THE KEY REGISTER: W = total real power ────────────────────────
-        # Positive = importing, negative = exporting (Fronius convention)
-        set_float(40097, p_grid)  # W  (wire addr 40097-40098 = reg 40098-40099)
+        # reg 40098-40099 = wire 40097-40098; positive = importing, negative = exporting
+        set_float(40097, p_grid)       # W
         set_float(40099, p_grid / 3)   # WphA
         set_float(40101, p_grid / 3)   # WphB
         set_float(40103, p_grid / 3)   # WphC
 
-        # VA (apparent power — approximate as equal to W if no reactive data)
-        set_float(40105, abs(p_grid))  # VA
-        set_float(40107, abs(p_grid) / 3)
-        set_float(40109, abs(p_grid) / 3)
-        set_float(40111, abs(p_grid) / 3)
+        # VA (apparent power): reg 40106-40107 = wire 40105-40106
+        set_float(40105, abs(p_grid))       # VA
+        set_float(40107, abs(p_grid) / 3)   # VAphA
+        set_float(40109, abs(p_grid) / 3)   # VAphB
+        set_float(40111, abs(p_grid) / 3)   # VAphC
 
-        # VAR (reactive power — zero)
-        set_float(40113, 0.0)
-        set_float(40115, 0.0)
-        set_float(40117, 0.0)
-        set_float(40119, 0.0)
+        # VAR (reactive power — zero): reg 40114-40115 = wire 40113-40114
+        set_float(40113, 0.0)   # VAR
+        set_float(40115, 0.0)   # VARphA
+        set_float(40117, 0.0)   # VARphB
+        set_float(40119, 0.0)   # VARphC
 
-        # Power factor
-        pf = 1.0 if p_grid == 0 else (1.0 if abs(p_grid) > 0 else 0.0)
-        set_float(40121, pf)
-        set_float(40123, pf)
-        set_float(40125, pf)
-        set_float(40127, pf)
+        # Power factor: reg 40122-40123 = wire 40121-40122
+        pf = 1.0 if p_grid == 0 else 1.0
+        set_float(40121, pf)   # PF
+        set_float(40123, pf)   # PFphA
+        set_float(40125, pf)   # PFphB
+        set_float(40127, pf)   # PFphC
 
-        # Energy registers (Wh)
-        set_float(40129, tot_wh_exp)   # TotWhExp
-        set_float(40131, tot_wh_exp / 3)
-        set_float(40133, tot_wh_exp / 3)
-        set_float(40135, tot_wh_exp / 3)
+        # Energy registers (Wh): TotWhExp at reg 40130-40131 = wire 40129-40130
+        set_float(40129, tot_wh_exp)        # TotWhExp
+        set_float(40131, tot_wh_exp / 3)    # TotWhExpPhA
+        set_float(40133, tot_wh_exp / 3)    # TotWhExpPhB
+        set_float(40135, tot_wh_exp / 3)    # TotWhExpPhC
 
-        set_float(40137, tot_wh_imp)   # TotWhImp
-        set_float(40139, tot_wh_imp / 3)
-        set_float(40141, tot_wh_imp / 3)
-        set_float(40143, tot_wh_imp / 3)
+        # TotWhImp at reg 40138-40139 = wire 40137-40138
+        set_float(40137, tot_wh_imp)        # TotWhImp
+        set_float(40139, tot_wh_imp / 3)    # TotWhImpPhA
+        set_float(40141, tot_wh_imp / 3)    # TotWhImpPhB
+        set_float(40143, tot_wh_imp / 3)    # TotWhImpPhC
 
-        # VAh export/import (zero)
+        # VAh export/import (zero) — 8 floats, reg 40146-40161 = wire 40145-40160
         for addr in range(40145, 40161, 2):
             set_float(addr, 0.0)
 
-        # VAr quadrant registers (zero)
-        for addr in range(40161, 40191, 2):
+        # VAr quadrant registers (zero) — 16 floats, reg 40162-40193 = wire 40161-40192
+        for addr in range(40161, 40193, 2):
             set_float(addr, 0.0)
 
-        # Events uint32 = 0
-        set_uint32(40191, 0)
+        # Events uint32 = 0: reg 40194-40195 = wire 40193-40194
+        set_uint32(40193, 0)
 
-        # End model marker
-        set_uint16(40193, SUNSPEC_END)
+        # End block: reg 40196 = 0xFFFF (wire 40195), reg 40197 = 0x0000 (wire 40196)
+        set_uint16(40195, SUNSPEC_END)
+        set_uint16(40196, 0)
 
         return regs
-
-
-class FroniusSmartMeterEnergyAccumulator:
-    """
-    Tracks imported and exported energy totals for the Modbus meter.
-    Call update() every coordinator refresh cycle.
-    """
-
-    def __init__(self) -> None:
-        self.tot_wh_imp: float = 0.0
-        self.tot_wh_exp: float = 0.0
-
-    def update(self, p_grid: float | None, interval_s: float) -> None:
-        """Accumulate energy based on current grid power and elapsed time."""
-        if p_grid is None:
-            return
-        wh = abs(p_grid) * interval_s / 3600.0
-        if p_grid > 0:
-            self.tot_wh_imp += wh
-        elif p_grid < 0:
-            self.tot_wh_exp += wh

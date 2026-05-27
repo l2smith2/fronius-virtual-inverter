@@ -36,7 +36,7 @@ from .const import (
 )
 from .coordinator import FroniusVirtualInverterCoordinator
 from .http_server import FroniusSolarAPIServer
-from .mdns_announcer import FroniusMDNSAnnouncer
+from .mdns_announcer import FroniusMDNSAnnouncer, RawMDNSAnnouncer
 from .modbus_server import FroniusSmartMeterModbusServer
 
 _LOGGER = logging.getLogger(__name__)
@@ -83,13 +83,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             f"Failed to start HTTP server on port {port}: {err}"
         ) from err
 
-    # ── mDNS announcer ─────────────────────────────────────────────────────
-    mdns = FroniusMDNSAnnouncer(name=name, port=port, serial=serial)
+    # ── mDNS announcer (_http._tcp.local. via zeroconf) ───────────────────
+    mdns = FroniusMDNSAnnouncer(name=name, port=port)
     try:
         await mdns.async_start(hass)
     except Exception as err:
         _LOGGER.warning("mDNS announcement failed (non-fatal): %s", err)
         mdns = None
+
+    # ── Raw mDNS announcer (Fronius-SE service types via UDP multicast) ────
+    raw_mdns = RawMDNSAnnouncer(name=name, port=port, serial=serial)
+    try:
+        await raw_mdns.async_start()
+    except Exception as err:
+        _LOGGER.warning("Raw mDNS announcement failed (non-fatal): %s", err)
+        raw_mdns = None
 
     # ── Modbus TCP Smart Meter IP server (optional) ────────────────────────
     modbus_server: FroniusSmartMeterModbusServer | None = None
@@ -118,6 +126,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "coordinator": coordinator,
         "server": server,
         "mdns": mdns,
+        "raw_mdns": raw_mdns,
         "modbus_server": modbus_server,
         "config": config,
     }
@@ -149,6 +158,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         mdns: FroniusMDNSAnnouncer | None = data.get("mdns")
         if mdns is not None:
             await mdns.async_stop()
+
+        raw_mdns: RawMDNSAnnouncer | None = data.get("raw_mdns")
+        if raw_mdns is not None:
+            await raw_mdns.async_stop()
 
         modbus: FroniusSmartMeterModbusServer | None = data.get("modbus_server")
         if modbus is not None:
