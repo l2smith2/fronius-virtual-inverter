@@ -13,6 +13,8 @@ from zeroconf import ServiceInfo
 from homeassistant.components.zeroconf import async_get_instance
 from homeassistant.core import HomeAssistant
 
+from .const import FRONIUS_HARDWARE_VERSION, FRONIUS_SOFTWARE_VERSION
+
 if TYPE_CHECKING:
     from zeroconf.asyncio import AsyncZeroconf
 
@@ -126,20 +128,39 @@ class RawMDNSAnnouncer:
         self._task: asyncio.Task | None = None
 
     def _make_txt(self, local_ip: str) -> bytes:
-        """Build TXT RDATA: FSED-DID + device info JSON split into 00/01 chunks."""
+        """Build TXT RDATA matching the Fronius device mDNS format from pcap.
+
+        Three TXT strings:
+          FSED-DID=V 1|P JSON|PFC 2
+          00=<first 250 bytes of DeviceMeta JSON>
+          01=<remainder of DeviceMeta JSON>
+        Each string is length-prefixed: len(key=value) + key=value.
+        """
         info = json.dumps(
             {
-                "devicetype": "fronius_datamanager_2_0",
-                "hostname": f"{self._name}.local",
-                "serial": self._serial,
-                "uniqueid": f"240.{self._serial}",
-                "ip": local_ip,
-                "platform": "wilma",
+                "DeviceMeta": {
+                    "Network": {
+                        "PrimaryNetworkInterface": "eth0",
+                    },
+                    "Device-Information": {
+                        "Systemname": self._name,
+                        "DeviceSerialNumber": self._serial,
+                        "DeviceGroup": "Fronius GEN24 6.0 Plus",
+                        "ArticleNumber": "4,210,209",
+                        "CommonName": self._name,
+                        "Manufacturer": "Fronius",
+                        "SoftwareBundleVersion": FRONIUS_SOFTWARE_VERSION,
+                        "HardwareRevision": FRONIUS_HARDWARE_VERSION,
+                        "CommissioningCompleted": "true",
+                    },
+                    "Connections": [],
+                },
+                "ZeroconfMetaVersion": "1.0",
             },
             separators=(",", ":"),
         )
+        chunk = 250  # value bytes per TXT string; "00=" prefix = 253 total, within 255 limit
         entries = ["FSED-DID=V 1|P JSON|PFC 2"]
-        chunk = 249  # 3-byte key prefix "00=" leaves 252 bytes; 249 is safe
         for i, start in enumerate(range(0, len(info), chunk)):
             entries.append(f"{i:02d}={info[start : start + chunk]}")
         return _txt_rdata(entries)
