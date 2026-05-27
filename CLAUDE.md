@@ -26,13 +26,24 @@ The Wattpilot scans for exactly two mDNS service types (confirmed by pcap):
 Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 We implemented `RawMDNSAnnouncer` in `mdns_announcer.py` that sends raw UDP multicast.
 
+**Confirmed facts about Wattpilot mDNS behaviour:**
+- Sends queries from **both** IPv4 (192.168.2.225) **and** IPv6 link-local (fe80::c249:efff:fe1e:5188) — responses must be sent to both `224.0.0.251` and `ff02::fb`
+- IPv6 multicast requires a scope ID: `ff02::fb%eth0` (interface index passed as 4-tuple scope_id in Python sendto)
+- Packet size must be kept under 400 bytes — earlier full DeviceMeta JSON grew packet to 730 bytes; now stripped to essential fields only
+- `cci` WebSocket property holds the paired inverter: `{ip, label, commonName, paired, reachableMdns, reachableUdp, reachableHttp}` — **read-only**, cannot be written via WebSocket
+- `commonName` format observed on SnapIN: `pilot-0.5e-1248152` — may need to match this pattern in TXT records
+- SnapIN (192.168.2.79) sends **zero** mDNS traffic once paired — goes completely silent after pairing; cannot observe it as a reference
+- SnapIN actively polls our virtual Smart Meter on port 502 every second ✓
+- SnapIN actively polls our HTTP Solar API on port 80 ✓
+- `ido` WebSocket property can push inverter data directly to Wattpilot but requires sudo/privileged auth (separate issue in the wattpilot HA integration)
+
 **Current problem:** Packets not appearing on wire despite no errors.
 - tcpdump on Proxmox vmbr0 shows Wattpilot querying but no response from 192.168.2.153
 - HA logs show announcer starting and sending from 192.168.2.153
 - Socket sendto() returns success but nothing in tcpdump
 - Proxmox vmbr0 multicast snooping = 0
 - tap100i0 is directly on vmbr0 (no fwbr firewall bridge)
-- **Next fix to try:** bind socket to local IP explicitly: `self._sock.bind((local_ip, 0))`
+- IPv6 socket now added alongside IPv4 — sends to ff02::fb with correct interface scope ID
 
 ## Network topology
 - HA host: 192.168.2.153 (Proxmox VM)
