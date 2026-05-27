@@ -164,9 +164,15 @@ class RawMDNSAnnouncer:
             socket.IP_MULTICAST_IF,
             socket.inet_aton(local_ip),
         )
+        self._sock.bind((local_ip, 0))
+        assigned_port = self._sock.getsockname()[1]
 
         self._task = asyncio.create_task(self._announce_loop())
-        _LOGGER.warning("RawMDNSAnnouncer sending from %s to 224.0.0.251:5353", local_ip)
+        _LOGGER.warning(
+            "RawMDNSAnnouncer bound to %s:%d, sending to 224.0.0.251:5353",
+            local_ip,
+            assigned_port,
+        )
         _LOGGER.info(
             "Raw mDNS: announcing '%s' at %s:%d for %s and %s",
             self._name,
