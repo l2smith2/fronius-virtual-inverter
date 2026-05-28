@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 from aiohttp import web
 
 from .const import (
+    API_ACTIVE_DEVICE_INFO,
     API_INVERTER_INFO,
     API_INVERTER_REALTIME,
     API_LOGGER_INFO,
@@ -61,6 +62,7 @@ class FroniusSolarAPIServer:
 
     def _setup_routes(self) -> None:
         self._app.router.add_get(API_VERSION, self._handle_api_version)
+        self._app.router.add_get(API_ACTIVE_DEVICE_INFO, self._handle_active_device_info)
         self._app.router.add_get(API_POWER_FLOW, self._handle_power_flow)
         self._app.router.add_get(API_INVERTER_INFO, self._handle_inverter_info)
         self._app.router.add_get(API_INVERTER_REALTIME, self._handle_inverter_realtime)
@@ -170,12 +172,24 @@ class FroniusSolarAPIServer:
         }
         return self._json_response(payload)
 
+    async def _handle_active_device_info(self, request: web.Request) -> web.Response:
+        device_class = request.rel_url.query.get("DeviceClass", "")
+        if device_class == "Meter":
+            data = {"0": {"DT": -1, "Serial": self._serial}}
+        else:
+            data = {}
+        payload = {
+            "Body": {"Data": data},
+            "Head": _make_head(),
+        }
+        return self._json_response(payload)
+
     async def _handle_inverter_info(self, request: web.Request) -> web.Response:
         payload = {
             "Body": {
                 "Data": {
                     "1": {
-                        "CustomName": self._inverter_name,
+                        "CustomName": self._system_name,
                         "DT": FRONIUS_DEVICE_TYPE,
                         "ErrorCode": 0,
                         "PVPower": 5000,
