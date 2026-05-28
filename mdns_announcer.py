@@ -28,11 +28,6 @@ MDNS_HTTP_TYPE = "_http._tcp.local."
 FRONIUS_SE_INVERTER_TYPE = "_Fronius-SE-Inverter._tcp.local."
 FRONIUS_SE_METER_TYPE = "_Fronius-SE-SmartMeter._tcp.local."
 
-FRONIUS_TXT_RECORDS: dict[bytes, bytes] = {
-    b"devicetype": b"fronius_datamanager_2_0",
-    b"server": b"Fronius",
-    b"FSED-DID": b"V 1|P JSON|PFC 2",
-}
 
 # DNS record types
 _TYPE_A = 1
@@ -330,9 +325,10 @@ class RawMDNSAnnouncer:
 class FroniusMDNSAnnouncer:
     """Announces the virtual inverter via mDNS using HA's shared Zeroconf instance."""
 
-    def __init__(self, name: str, port: int) -> None:
+    def __init__(self, name: str, port: int, system_name: str | None = None) -> None:
         self._name = name
         self._port = port
+        self._system_name = system_name or name
         self._zeroconf: AsyncZeroconf | None = None
         self._service_info: ServiceInfo | None = None
 
@@ -341,12 +337,19 @@ class FroniusMDNSAnnouncer:
         local_ip = _get_local_ip()
         ip_bytes = socket.inet_aton(local_ip)
 
+        txt_records: dict[bytes, bytes] = {
+            b"devicetype": b"fronius_datamanager_2_0",
+            b"server": b"Fronius",
+            b"FSED-DID": b"V 1|P JSON|PFC 2",
+            b"friendly_name": self._system_name.encode(),
+        }
+
         self._service_info = ServiceInfo(
             type_=MDNS_HTTP_TYPE,
             name=f"{self._name}.{MDNS_HTTP_TYPE}",
             addresses=[ip_bytes],
             port=self._port,
-            properties=FRONIUS_TXT_RECORDS,
+            properties=txt_records,
             server=f"{self._name}.local.",
         )
 
