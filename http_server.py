@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -67,6 +68,7 @@ class FroniusSolarAPIServer:
         self._app.router.add_get(API_INVERTER_INFO, self._handle_inverter_info)
         self._app.router.add_get(API_INVERTER_REALTIME, self._handle_inverter_realtime)
         self._app.router.add_get(API_METER_REALTIME, self._handle_meter_realtime)
+        self._app.router.add_get("/solar_api/v1/GetMeterRealtimeData.cgi", self._handle_meter_realtime)
         self._app.router.add_get(API_STORAGE_REALTIME, self._handle_storage_realtime)
         self._app.router.add_get(API_LOGGER_INFO, self._handle_logger_info)
         # Catch-all for any other Solar API paths
@@ -228,6 +230,8 @@ class FroniusSolarAPIServer:
         data = self._coordinator.data
         p_grid = data.get("P_Grid", 0.0) or 0.0
         phases = int(data.get("grid_phases", 1))
+        tot_wh_imp = data.get("_tot_wh_imp", 0.0)
+        tot_wh_exp = data.get("_tot_wh_exp", 0.0)
 
         p_a = data.get("P_Grid_A")
         p_b = data.get("P_Grid_B")
@@ -235,8 +239,14 @@ class FroniusSolarAPIServer:
         i_a = data.get("I_Grid_A")
         i_b = data.get("I_Grid_B")
         i_c = data.get("I_Grid_C")
+        # None means no voltage sensor configured; use 240V only for current derivation
+        v_a_raw: float | None = data.get("V_Grid_A")
+        v_b_raw: float | None = data.get("V_Grid_B")
+        v_c_raw: float | None = data.get("V_Grid_C")
+        v_a: float = v_a_raw or 240.0
+        v_b: float = v_b_raw or 240.0
+        v_c: float = v_c_raw or 240.0
 
-        # Derive per-phase power if not provided by sensors
         if p_a is None and p_b is None and p_c is None:
             if phases == 3:
                 p_a = p_b = p_c = p_grid / 3.0
@@ -247,33 +257,101 @@ class FroniusSolarAPIServer:
             p_b = p_b or 0.0
             p_c = p_c or 0.0
 
-        # Derive current from power at 230 V if current sensors not provided
-        i_a = i_a if i_a is not None else p_a / 230.0
-        i_b = i_b if i_b is not None else p_b / 230.0
-        i_c = i_c if i_c is not None else p_c / 230.0
+        i_a = i_a if i_a is not None else p_a / v_a
+        i_b = i_b if i_b is not None else p_b / v_b
+        i_c = i_c if i_c is not None else p_c / v_c
+
+        pf_sensor_a = data.get("PF_Grid_A")
+        pf_sensor_b = data.get("PF_Grid_B")
+        pf_sensor_c = data.get("PF_Grid_C")
+        q_a = data.get("Q_Grid_A") or 0.0
+        q_b = data.get("Q_Grid_B") or 0.0
+        q_c = data.get("Q_Grid_C") or 0.0
+
+        def _derive_pf(p: float, i: float, v: float, sensor: float | None) -> float:
+            if sensor is not None:
+                return sensor
+            s = i * v
+            return round(p / s, 3) if s > 0 else (1.0 if p >= 0 else -1.0)
+
+        def _apparent(p: float, q: float) -> float:
+            return math.sqrt(p * p + q * q) if q != 0.0 else abs(p)
+
+        pf_a = _derive_pf(p_a, i_a, v_a, pf_sensor_a)
+        pf_b = _derive_pf(p_b, i_b, v_b, pf_sensor_b)
+        pf_c = _derive_pf(p_c, i_c, v_c, pf_sensor_c)
+        s_a = _apparent(p_a, q_a)
+        s_b = _apparent(p_b, q_b)
+        s_c = _apparent(p_c, q_c)
+        q_sum = q_a + q_b + q_c
+        s_sum = _apparent(p_grid, q_sum)
+        pf_sum = round(p_grid / s_sum, 3) if s_sum > 0 else (1.0 if p_grid >= 0 else -1.0)
+
+        timestamp = int(datetime.now(timezone.utc).timestamp())
+
+        _LOGGER.warning(
+            "MeterRealtime phase_1: P=%.1f I=%.3f V=%s PF=%s Q=%.1f",
+            p_a, i_a,
+            round(v_a_raw, 1) if v_a_raw is not None else "default(240)",
+            pf_a, q_a,
+        )
+
+        meter_data: dict = {
+            "Details": {
+                "Manufacturer": "Fronius",
+                "Model": "Smart Meter TS 65A-3",
+                "Serial": self._serial,
+            },
+            "Enable": 1,
+            "TimeStamp": timestamp,
+            "Meter_Location_Current": 0,
+            "Visible": 1,
+            "Frequency_Phase_Average": 50.0,
+            "PowerReal_P_Sum": round(p_grid, 1),
+            "PowerReactive_Q_Sum": round(q_sum, 1),
+            "PowerApparent_S_Sum": round(s_sum, 1),
+            "PowerFactor_Sum": pf_sum,
+            "Current_AC_Sum": round(i_a if phases == 1 else i_a + i_b + i_c, 2),
+            "EnergyReal_WAC_Minus_Absolute": round(tot_wh_exp, 1),
+            "EnergyReal_WAC_Plus_Absolute": round(tot_wh_imp, 1),
+            "EnergyReal_WAC_Sum_Consumed": round(tot_wh_imp, 1),
+            "EnergyReal_WAC_Sum_Produced": round(tot_wh_exp, 1),
+            # Phase 1 (always present)
+            "Current_AC_Phase_1": round(i_a, 2),
+            "PowerReal_P_Phase_1": round(p_a, 1),
+            "PowerReactive_Q_Phase_1": round(q_a, 1),
+            "PowerApparent_S_Phase_1": round(s_a, 1),
+            "PowerFactor_Phase_1": pf_a,
+            "EnergyReal_WAC_Phase_1_Consumed": round(tot_wh_imp, 1),
+            "EnergyReal_WAC_Phase_1_Produced": round(tot_wh_exp, 1),
+        }
+
+        if v_a_raw is not None:
+            meter_data["Voltage_AC_Phase_1"] = round(v_a_raw, 1)
+
+        if phases == 3:
+            meter_data.update({
+                "Current_AC_Phase_2": round(i_b, 2),
+                "Current_AC_Phase_3": round(i_c, 2),
+                "PowerReal_P_Phase_2": round(p_b, 1),
+                "PowerReal_P_Phase_3": round(p_c, 1),
+                "PowerReactive_Q_Phase_2": round(q_b, 1),
+                "PowerReactive_Q_Phase_3": round(q_c, 1),
+                "PowerApparent_S_Phase_2": round(s_b, 1),
+                "PowerApparent_S_Phase_3": round(s_c, 1),
+                "PowerFactor_Phase_2": pf_b,
+                "PowerFactor_Phase_3": pf_c,
+            })
+            if v_b_raw is not None:
+                meter_data["Voltage_AC_Phase_2"] = round(v_b_raw, 1)
+            if v_c_raw is not None:
+                meter_data["Voltage_AC_Phase_3"] = round(v_c_raw, 1)
+
+        scope = request.rel_url.query.get("Scope", "System")
+        body_data: dict = {"0": meter_data}
 
         payload = {
-            "Body": {
-                "Data": {
-                    "0": {
-                        "Details": {
-                            "Manufacturer": "Fronius",
-                            "Model": "Smart Meter TS 65A-3",
-                            "Serial": self._serial,
-                        },
-                        "Enable": 1,
-                        "PowerReal_P_Sum": round(p_grid, 1),
-                        "PowerReal_P_Phase_1": round(p_a, 1),
-                        "PowerReal_P_Phase_2": round(p_b, 1),
-                        "PowerReal_P_Phase_3": round(p_c, 1),
-                        "Current_AC_Phase_1": round(i_a, 2),
-                        "Current_AC_Phase_2": round(i_b, 2),
-                        "Current_AC_Phase_3": round(i_c, 2),
-                        "Meter_Location_Current": 0,
-                        "Visible": 1,
-                    }
-                }
-            },
+            "Body": {"Data": body_data},
             "Head": _make_head(),
         }
         return self._json_response(payload)
