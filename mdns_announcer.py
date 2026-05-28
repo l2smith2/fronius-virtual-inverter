@@ -192,6 +192,7 @@ class RawMDNSAnnouncer:
                     "Device-Information": {
                         "Systemname": self._system_name,
                         "CommonName": f"pilot-0.5e-{self._system_name}",
+                        "UniqueID": f"240.{self._system_name}",
                         "DeviceSerialNumber": self._serial,
                         "Manufacturer": "Fronius",
                         "SoftwareBundleVersion": "3.4.0-102",

@@ -276,7 +276,7 @@ class FroniusSolarAPIServer:
         payload = {
             "Body": {
                 "LoggerInfo": {
-                    "UniqueID": f"240.{self._serial}",
+                    "UniqueID": f"240.{self._system_name}",
                     "ProductID": "fronius-datamanager-card",
                     "PlatformID": "wilma",
                     "HWVersion": "1.4E",
