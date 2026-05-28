@@ -96,7 +96,9 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 - system_name used as serial for human-readable display name ✓
 - GetMeterRealtimeData.cgi (Device scope) served correctly — what Wattpilot polls ✓
 - Per-phase voltage, power factor, reactive power sensors supported ✓
-- Config flow restructured into 4 steps: user → grid → generation → advanced ✓
+- Config flow restructured into 6 steps: user → grid → generation → advanced (Phase A) → three_phase (Phase B/C) → modbus ✓
+- Per-phase diagnostic sensors disabled by default (entity_registry_enabled_default=False) ✓
+- Unconfigured diagnostic sensors hidden via available property (checks last_update_success + None) ✓
 
 ## Network topology (example)
 - HA host: 192.168.1.100 (your HA machine IP)
@@ -116,9 +118,22 @@ https://github.com/l2smith2/fronius-virtual-inverter
 
 ## Repo structure (HACS-compatible)
 - Integration files live at `custom_components/fronius_virtual_inverter/` inside the repo
+- Brand assets (icon.png, icon@2x.png, logo.png) live at `custom_components/fronius_virtual_inverter/brand/`
 - `hacs.json`, `README.md`, `CLAUDE.md` sit at the repo root
 - For HACS installs: HACS copies `custom_components/fronius_virtual_inverter/` → `/config/custom_components/fronius_virtual_inverter/`
-- For development: clone repo to a neutral path and copy or symlink the `custom_components/fronius_virtual_inverter/` subfolder into `/config/custom_components/`
+- For development: edit in `/homeassistant/fronius-dev/`, deploy with `cp -r fronius-dev/custom_components/fronius_virtual_inverter/. /homeassistant/custom_components/fronius_virtual_inverter/`, then `ha core restart`
+- Symlinks do NOT work reliably for HA custom components — always use real directory copy
+
+## manifest.json
+- Minimum HA version: `2026.3.0`
+- `iot_class`: `local_push`
+- `config_flow`: true
+
+## Diagnostic sensors (sensor.py)
+- 6 core sensors always enabled: Grid Power, PV Power, Battery Power, Load Power, Battery SOC, Energy Today
+- 15 per-phase sensors (P/I/V/PF/Q for phases A/B/C) have `entity_registry_enabled_default=False` — disabled until user explicitly enables or configures them
+- `available` property: checks `last_update_success` → `data is None` → `data.get(key) is None`
+- Coordinator stores `None` (not a default value) for unconfigured sensors so `available` correctly hides them
 
 ## HA path
 /config/custom_components/fronius_virtual_inverter/
