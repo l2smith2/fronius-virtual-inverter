@@ -14,6 +14,11 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_GRID_CT_RATING,
+    CONF_GRID_PHASES,
+    CONF_I_GRID_PHASE_A,
+    CONF_I_GRID_PHASE_B,
+    CONF_I_GRID_PHASE_C,
     CONF_MODBUS_ENABLED,
     CONF_MODBUS_PORT,
     CONF_P_AKKU_DUAL_MODE,
@@ -23,6 +28,9 @@ from .const import (
     CONF_P_AKKU_SENSOR_POS,
     CONF_P_GRID_DUAL_MODE,
     CONF_P_GRID_INVERT,
+    CONF_P_GRID_PHASE_A,
+    CONF_P_GRID_PHASE_B,
+    CONF_P_GRID_PHASE_C,
     CONF_P_GRID_SENSOR,
     CONF_P_GRID_SENSOR_NEG,
     CONF_P_GRID_SENSOR_POS,
@@ -34,6 +42,7 @@ from .const import (
     CONF_SOC_SENSOR,
     CONF_SYSTEM_NAME,
     CONF_UPDATE_INTERVAL,
+    DEFAULT_GRID_CT_RATING,
     DEFAULT_MODBUS_PORT,
     DEFAULT_NAME,
     DEFAULT_PORT,
@@ -121,6 +130,36 @@ def _sensor_schema_ui(defaults: dict) -> vol.Schema:
                 selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
             ),
             vol.Optional(CONF_P_GRID_INVERT, default=defaults.get(CONF_P_GRID_INVERT, False)): selector.BooleanSelector(),
+            # Grid phase configuration
+            vol.Optional(CONF_GRID_PHASES, default=defaults.get(CONF_GRID_PHASES, "1")): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        {"value": "1", "label": "Single phase (1)"},
+                        {"value": "3", "label": "Three phase (3)"},
+                    ]
+                )
+            ),
+            vol.Optional(CONF_GRID_CT_RATING, default=defaults.get(CONF_GRID_CT_RATING, DEFAULT_GRID_CT_RATING)): selector.NumberSelector(
+                selector.NumberSelectorConfig(min=6, max=125, step=1, unit_of_measurement="A", mode="box")
+            ),
+            vol.Optional(CONF_P_GRID_PHASE_A): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
+            ),
+            vol.Optional(CONF_P_GRID_PHASE_B): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
+            ),
+            vol.Optional(CONF_P_GRID_PHASE_C): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
+            ),
+            vol.Optional(CONF_I_GRID_PHASE_A): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
+            ),
+            vol.Optional(CONF_I_GRID_PHASE_B): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
+            ),
+            vol.Optional(CONF_I_GRID_PHASE_C): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
+            ),
             # P_PV
             vol.Optional(CONF_P_PV_SENSOR): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
@@ -292,6 +331,36 @@ class FroniusVirtualInverterOptionsFlow(config_entries.OptionsFlow):
                     selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
                 ),
                 vol.Optional(CONF_P_GRID_INVERT, default=current.get(CONF_P_GRID_INVERT, False)): selector.BooleanSelector(),
+                # Grid phase configuration
+                vol.Optional(CONF_GRID_PHASES, default=current.get(CONF_GRID_PHASES, "1")): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            {"value": "1", "label": "Single phase (1)"},
+                            {"value": "3", "label": "Three phase (3)"},
+                        ]
+                    )
+                ),
+                vol.Optional(CONF_GRID_CT_RATING, default=current.get(CONF_GRID_CT_RATING, DEFAULT_GRID_CT_RATING)): selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=6, max=125, step=1, unit_of_measurement="A", mode="box")
+                ),
+                vol.Optional(CONF_P_GRID_PHASE_A, description={"suggested_value": current.get(CONF_P_GRID_PHASE_A)}): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
+                ),
+                vol.Optional(CONF_P_GRID_PHASE_B, description={"suggested_value": current.get(CONF_P_GRID_PHASE_B)}): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
+                ),
+                vol.Optional(CONF_P_GRID_PHASE_C, description={"suggested_value": current.get(CONF_P_GRID_PHASE_C)}): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
+                ),
+                vol.Optional(CONF_I_GRID_PHASE_A, description={"suggested_value": current.get(CONF_I_GRID_PHASE_A)}): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
+                ),
+                vol.Optional(CONF_I_GRID_PHASE_B, description={"suggested_value": current.get(CONF_I_GRID_PHASE_B)}): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
+                ),
+                vol.Optional(CONF_I_GRID_PHASE_C, description={"suggested_value": current.get(CONF_I_GRID_PHASE_C)}): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
+                ),
                 # P_PV
                 vol.Optional(CONF_P_PV_SENSOR, description={"suggested_value": current.get(CONF_P_PV_SENSOR)}): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)

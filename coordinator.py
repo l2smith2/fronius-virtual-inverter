@@ -9,6 +9,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
+    CONF_GRID_CT_RATING,
+    CONF_GRID_PHASES,
+    CONF_I_GRID_PHASE_A,
+    CONF_I_GRID_PHASE_B,
+    CONF_I_GRID_PHASE_C,
     CONF_P_AKKU_DUAL_MODE,
     CONF_P_AKKU_INVERT,
     CONF_P_AKKU_SENSOR,
@@ -16,6 +21,9 @@ from .const import (
     CONF_P_AKKU_SENSOR_POS,
     CONF_P_GRID_DUAL_MODE,
     CONF_P_GRID_INVERT,
+    CONF_P_GRID_PHASE_A,
+    CONF_P_GRID_PHASE_B,
+    CONF_P_GRID_PHASE_C,
     CONF_P_GRID_SENSOR,
     CONF_P_GRID_SENSOR_NEG,
     CONF_P_GRID_SENSOR_POS,
@@ -25,10 +33,11 @@ from .const import (
     CONF_P_PV_SENSOR,
     CONF_SOC_SENSOR,
     CONF_UPDATE_INTERVAL,
+    DEFAULT_GRID_CT_RATING,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
 )
-from .sensor_reader import read_power_value, read_soc
+from .sensor_reader import _get_sensor_value, read_power_value, read_soc
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -98,6 +107,17 @@ class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
 
         soc = read_soc(self.hass, cfg.get(CONF_SOC_SENSOR))
 
+        # Per-phase grid power and current
+        p_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_P_GRID_PHASE_A))
+        p_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_P_GRID_PHASE_B))
+        p_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_P_GRID_PHASE_C))
+        i_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_I_GRID_PHASE_A))
+        i_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_I_GRID_PHASE_B))
+        i_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_I_GRID_PHASE_C))
+
+        grid_phases = int(cfg.get(CONF_GRID_PHASES, "1"))
+        ct_rating = float(cfg.get(CONF_GRID_CT_RATING, DEFAULT_GRID_CT_RATING))
+
         interval_s = float(int(cfg.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)))
 
         # Accumulate PV energy
@@ -126,6 +146,14 @@ class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
             "E_Total": self._e_total,
             "_tot_wh_imp": self._tot_wh_imp,
             "_tot_wh_exp": self._tot_wh_exp,
+            "P_Grid_A": p_grid_a,
+            "P_Grid_B": p_grid_b,
+            "P_Grid_C": p_grid_c,
+            "I_Grid_A": i_grid_a,
+            "I_Grid_B": i_grid_b,
+            "I_Grid_C": i_grid_c,
+            "grid_phases": grid_phases,
+            "grid_ct_rating": ct_rating,
         }
 
         _LOGGER.debug(

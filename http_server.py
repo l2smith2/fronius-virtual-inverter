@@ -185,6 +185,7 @@ class FroniusSolarAPIServer:
         return self._json_response(payload)
 
     async def _handle_inverter_info(self, request: web.Request) -> web.Response:
+        ct_rating = self._coordinator.data.get("grid_ct_rating", 32)
         payload = {
             "Body": {
                 "Data": {
@@ -196,6 +197,7 @@ class FroniusSolarAPIServer:
                         "Show": 1,
                         "StatusCode": 7,  # 7 = running
                         "UniqueID": self._serial,
+                        "MaxACCurrent": ct_rating,
                     }
                 }
             },
@@ -222,9 +224,33 @@ class FroniusSolarAPIServer:
         return self._json_response(payload)
 
     async def _handle_meter_realtime(self, request: web.Request) -> web.Response:
-        """Return grid meter data."""
+        """Return grid meter data with per-phase breakdown for load balancing."""
         data = self._coordinator.data
         p_grid = data.get("P_Grid", 0.0) or 0.0
+        phases = int(data.get("grid_phases", 1))
+
+        p_a = data.get("P_Grid_A")
+        p_b = data.get("P_Grid_B")
+        p_c = data.get("P_Grid_C")
+        i_a = data.get("I_Grid_A")
+        i_b = data.get("I_Grid_B")
+        i_c = data.get("I_Grid_C")
+
+        # Derive per-phase power if not provided by sensors
+        if p_a is None and p_b is None and p_c is None:
+            if phases == 3:
+                p_a = p_b = p_c = p_grid / 3.0
+            else:
+                p_a, p_b, p_c = p_grid, 0.0, 0.0
+        else:
+            p_a = p_a or 0.0
+            p_b = p_b or 0.0
+            p_c = p_c or 0.0
+
+        # Derive current from power at 230 V if current sensors not provided
+        i_a = i_a if i_a is not None else p_a / 230.0
+        i_b = i_b if i_b is not None else p_b / 230.0
+        i_c = i_c if i_c is not None else p_c / 230.0
 
         payload = {
             "Body": {
@@ -237,6 +263,12 @@ class FroniusSolarAPIServer:
                         },
                         "Enable": 1,
                         "PowerReal_P_Sum": round(p_grid, 1),
+                        "PowerReal_P_Phase_1": round(p_a, 1),
+                        "PowerReal_P_Phase_2": round(p_b, 1),
+                        "PowerReal_P_Phase_3": round(p_c, 1),
+                        "Current_AC_Phase_1": round(i_a, 2),
+                        "Current_AC_Phase_2": round(i_b, 2),
+                        "Current_AC_Phase_3": round(i_c, 2),
                         "Meter_Location_Current": 0,
                         "Visible": 1,
                     }
