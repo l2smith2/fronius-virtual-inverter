@@ -12,7 +12,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfCurrent, UnitOfEnergy, UnitOfPower, PERCENTAGE
+from homeassistant.const import UnitOfEnergy, UnitOfPower, PERCENTAGE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -127,7 +127,7 @@ SENSOR_DESCRIPTIONS: tuple[FroniusSensorEntityDescription, ...] = (
         name="Grid Current Phase A",
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfCurrent.AMPERE,
+        native_unit_of_measurement="A",
         entity_category=EntityCategory.DIAGNOSTIC,
         icon="mdi:current-ac",
     ),
@@ -137,7 +137,7 @@ SENSOR_DESCRIPTIONS: tuple[FroniusSensorEntityDescription, ...] = (
         name="Grid Current Phase B",
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfCurrent.AMPERE,
+        native_unit_of_measurement="A",
         entity_category=EntityCategory.DIAGNOSTIC,
         icon="mdi:current-ac",
     ),
@@ -147,7 +147,7 @@ SENSOR_DESCRIPTIONS: tuple[FroniusSensorEntityDescription, ...] = (
         name="Grid Current Phase C",
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfCurrent.AMPERE,
+        native_unit_of_measurement="A",
         entity_category=EntityCategory.DIAGNOSTIC,
         icon="mdi:current-ac",
     ),
