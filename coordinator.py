@@ -109,6 +109,11 @@ class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
 
         # Per-phase grid power and current
         p_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_P_GRID_PHASE_A))
+        _LOGGER.warning(
+            "Phase config: phases=%s, phase_a_sensor=%s",
+            cfg.get(CONF_GRID_PHASES), cfg.get(CONF_P_GRID_PHASE_A),
+        )
+        _LOGGER.warning("Phase A value: %s", p_grid_a)
         p_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_P_GRID_PHASE_B))
         p_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_P_GRID_PHASE_C))
         i_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_I_GRID_PHASE_A))

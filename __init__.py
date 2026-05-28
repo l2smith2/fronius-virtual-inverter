@@ -152,24 +152,28 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
-    if unload_ok and entry.entry_id in hass.data[DOMAIN]:
+    if entry.entry_id in hass.data.get(DOMAIN, {}):
         data = hass.data[DOMAIN].pop(entry.entry_id)
-
-        await data["server"].stop()
-
-        mdns: FroniusMDNSAnnouncer | None = data.get("mdns")
-        if mdns is not None:
-            await mdns.async_stop()
-
-        raw_mdns: RawMDNSAnnouncer | None = data.get("raw_mdns")
-        if raw_mdns is not None:
-            await raw_mdns.async_stop()
-
-        modbus: FroniusSmartMeterModbusServer | None = data.get("modbus_server")
-        if modbus is not None:
-            await modbus.stop()
+        for key, stop_method in [
+            ("server", "stop"),
+            ("mdns", "async_stop"),
+            ("raw_mdns", "async_stop"),
+            ("modbus_server", "stop"),
+        ]:
+            obj = data.get(key)
+            if obj is not None:
+                try:
+                    await getattr(obj, stop_method)()
+                except Exception as err:
+                    _LOGGER.warning("Error stopping %s: %s", key, err)
 
     return unload_ok
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload a config entry."""
+    await async_unload_entry(hass, entry)
+    await async_setup_entry(hass, entry)
 
 
 async def _async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:

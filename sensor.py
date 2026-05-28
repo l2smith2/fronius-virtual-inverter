@@ -12,7 +12,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfEnergy, UnitOfPower, PERCENTAGE
+from homeassistant.const import UnitOfCurrent, UnitOfEnergy, UnitOfPower, PERCENTAGE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -90,6 +90,66 @@ SENSOR_DESCRIPTIONS: tuple[FroniusSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
         entity_category=EntityCategory.DIAGNOSTIC,
         icon="mdi:solar-power-variant",
+    ),
+    FroniusSensorEntityDescription(
+        key="p_grid_a",
+        data_key="P_Grid_A",
+        name="Grid Power Phase A",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:transmission-tower",
+    ),
+    FroniusSensorEntityDescription(
+        key="p_grid_b",
+        data_key="P_Grid_B",
+        name="Grid Power Phase B",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:transmission-tower",
+    ),
+    FroniusSensorEntityDescription(
+        key="p_grid_c",
+        data_key="P_Grid_C",
+        name="Grid Power Phase C",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:transmission-tower",
+    ),
+    FroniusSensorEntityDescription(
+        key="i_grid_a",
+        data_key="I_Grid_A",
+        name="Grid Current Phase A",
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfCurrent.AMPERE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:current-ac",
+    ),
+    FroniusSensorEntityDescription(
+        key="i_grid_b",
+        data_key="I_Grid_B",
+        name="Grid Current Phase B",
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfCurrent.AMPERE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:current-ac",
+    ),
+    FroniusSensorEntityDescription(
+        key="i_grid_c",
+        data_key="I_Grid_C",
+        name="Grid Current Phase C",
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfCurrent.AMPERE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        icon="mdi:current-ac",
     ),
 )
 
