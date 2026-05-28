@@ -113,5 +113,12 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 ## GitHub
 https://github.com/l2smith2/fronius-virtual-inverter
 
+## Repo structure (HACS-compatible)
+- Integration files live at `custom_components/fronius_virtual_inverter/` inside the repo
+- `hacs.json`, `README.md`, `CLAUDE.md` sit at the repo root
+- For HACS installs: HACS copies `custom_components/fronius_virtual_inverter/` → `/config/custom_components/fronius_virtual_inverter/`
+- For development: clone to `/config/custom_components/` parent and symlink, or clone elsewhere and copy the subfolder
+
 ## HA path
 /config/custom_components/fronius_virtual_inverter/
+(files within this folder are the contents of custom_components/fronius_virtual_inverter/ from the repo)
