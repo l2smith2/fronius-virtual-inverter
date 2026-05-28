@@ -8,5 +8,6 @@
   "dependencies": [],
   "codeowners": ["@l2smith2"],
   "iot_class": "local_push",
-  "config_flow": true
+  "config_flow": true,
+  "homeassistant": "2024.1.0"
 }

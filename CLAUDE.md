@@ -17,8 +17,8 @@ Emulates a Fronius GEN24 inverter + Fronius Smart Meter IP on the local network 
    - Unit ID = 240
    - Hz is uint16 at wire address 40095 (register 40096), value 5000 = 50.00Hz
    - W register at wire address 40097 (registers 40098-40099) — confirmed by live test
-   - Successfully detected by real Fronius SnapIN at 192.168.2.79
-   - SnapIN adds it as TCP meter at 192.168.2.153:502, unit ID 240
+   - Successfully detected by a real Fronius SnapIN inverter on the same LAN
+   - SnapIN adds it as TCP meter at HA-IP:502, unit ID 240
    - Data appears in SolarWeb ✓
 
 ## mDNS discovery — WORKING ✓
@@ -32,20 +32,20 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 
 **Key fixes that solved mDNS pairing:**
 1. **Bind to port 5353 with SO_REUSEPORT** — RFC 6762 requires mDNS responses to originate from UDP source port 5353. Wattpilot was silently discarding our responses because they came from ephemeral ports. SO_REUSEPORT allows sharing port 5353 with HA's zeroconf daemon.
-2. **IPv6 support with AAAA records** — Wattpilot queries from both IPv4 (192.168.2.225) and IPv6 link-local (fe80::c249:efff:fe1e:5188). Added second socket sending to `ff02::fb` with correct interface scope ID, and AAAA records in the additional section.
+2. **IPv6 support with AAAA records** — Wattpilot queries from both IPv4 and IPv6 link-local. Added second socket sending to `ff02::fb` with correct interface scope ID, and AAAA records in the additional section.
 
 **Confirmed facts about Wattpilot mDNS behaviour:**
 - Sends queries from **both** IPv4 and IPv6 link-local — both must be answered
 - IPv6 multicast requires a scope ID: interface index passed as 4-tuple scope_id in Python sendto
 - Packet size must be kept under 400 bytes — full DeviceMeta JSON grew packets to 730 bytes; stripped to essential fields only
 - `cci` WebSocket property holds the paired inverter: `{ip, label, commonName, paired, reachableMdns, reachableUdp, reachableHttp}` — **read-only**, cannot be written via WebSocket
-- SnapIN (192.168.2.79) sends **zero** mDNS traffic once paired — goes completely silent after pairing
+- SnapIN sends **zero** mDNS traffic once paired — goes completely silent after pairing
 
 **Result:** Wattpilot discovers, pairs, and uses the virtual inverter for PV surplus (Eco) charging. ✓
 
 ## Display name / serial number
-- `system_name` (configured in setup) is used as the serial — so UniqueID becomes `240.<system_name>` (e.g. `240.Tesla`)
-- This makes the Wattpilot pairing screen show `Tesla (192.168.2.153)` instead of a hex hash
+- `system_name` (configured in setup) is used as the serial — so UniqueID becomes `240.<system_name>` (e.g. `240.MyHome`)
+- This makes the Wattpilot pairing screen show `MyHome (192.168.1.x)` instead of a hex hash
 - `GetInverterInfo.CustomName` also uses `system_name`
 - `GetLoggerInfo.UniqueID` uses `240.<system_name>`
 - mDNS TXT records include `CommonName=pilot-0.5e-<system_name>`, `UniqueID=240.<system_name>`, `Systemname=<system_name>`
@@ -66,9 +66,9 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 **Load balancing stability note:**
 - Current sensor alone causes inconsistency at near-zero real power (high I, low P → PF≈-0.02)
 - Solution: configure Power Factor and Reactive Power Phase sensors from Fronius Smart Meter integration
-- These are available from the real SnapIN integration entities (see Fronius Smart Meter sensors below)
+- These are available from the SnapIN integration entities (see Fronius Smart Meter sensors below)
 
-**Fronius Smart Meter sensors available (from real SnapIN integration):**
+**Fronius Smart Meter sensors available (from SnapIN integration):**
 - `sensor.fronius_current_phase_1` (A)
 - `sensor.fronius_power_factor_phase_1`
 - `sensor.fronius_reactive_power_phase_1` (VAr)
@@ -79,7 +79,7 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 ## GetMeterRealtimeData response format
 - `.cgi` (Device scope, Wattpilot polls this) and `.fcgi` (System scope) both handled
 - Response matches real Fronius SnapIN format: `TimeStamp`, `Frequency_Phase_Average`, `Voltage_AC_Phase_1/2/3`, `PowerApparent_S_*`, `PowerFactor_*`, `PowerReactive_Q_*`, `EnergyReal_WAC_*`
-- `PowerApparent_S = sqrt(P² + Q²)` when Q≠0, else `abs(P)`
+- `PowerApparent_S = I * V` per phase (matches real meter measurement; credible when P=0 but I/Q non-zero)
 - `PowerFactor`: from sensor → derived from P/(I×V) → sign-based fallback (1.0 import, -1.0 export)
 - Energy accumulators (`EnergyReal_WAC_*`) tracked in coordinator as running totals
 - For single-phase: only Phase_1 fields included; for three-phase: Phase_1/2/3 all included
@@ -98,11 +98,12 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 - Per-phase voltage, power factor, reactive power sensors supported ✓
 - Config flow restructured into 4 steps: user → grid → generation → advanced ✓
 
-## Network topology
-- HA host: 192.168.2.153 (Proxmox VM)
-- Wattpilot: 192.168.2.225 (Golden_Duck_91017579, firmware 42.5)
-- Real SnapIN inverter: 192.168.2.79 (Fronius Datamanager 2.0, DT=102, name: Smith, serial: 240.1248152)
-- Proxmox host: separate machine, vmbr0 bridge, multicast snooping disabled
+## Network topology (example)
+- HA host: 192.168.1.100 (your HA machine IP)
+- Wattpilot: 192.168.1.x (same subnet required for mDNS)
+- Real SnapIN inverter (optional, if present): 192.168.1.x
+- All devices must be on the same subnet — mDNS does not cross subnet boundaries
+- If using a VM or container: ensure multicast is not filtered (disable multicast snooping on the bridge)
 
 ## Sign conventions (Fronius)
 - P_Grid: positive = import, negative = export
@@ -117,7 +118,7 @@ https://github.com/l2smith2/fronius-virtual-inverter
 - Integration files live at `custom_components/fronius_virtual_inverter/` inside the repo
 - `hacs.json`, `README.md`, `CLAUDE.md` sit at the repo root
 - For HACS installs: HACS copies `custom_components/fronius_virtual_inverter/` → `/config/custom_components/fronius_virtual_inverter/`
-- For development: clone to `/config/custom_components/` parent and symlink, or clone elsewhere and copy the subfolder
+- For development: clone repo to a neutral path and copy or symlink the `custom_components/fronius_virtual_inverter/` subfolder into `/config/custom_components/`
 
 ## HA path
 /config/custom_components/fronius_virtual_inverter/

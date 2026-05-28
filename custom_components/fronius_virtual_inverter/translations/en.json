@@ -2,28 +2,24 @@
   "config": {
     "step": {
       "user": {
-        "title": "Basic Settings",
-        "description": "Configure your virtual Fronius GEN24 inverter name and connection settings.",
+        "title": "Virtual Inverter Setup",
+        "description": "Give your virtual inverter a name and configure the HTTP server that the Wattpilot will connect to.",
         "data": {
           "name": "Inverter Name",
           "system_name": "System Display Name",
           "port": "HTTP Server Port",
-          "update_interval": "Update Interval (seconds)",
-          "modbus_enabled": "Enable Smart Meter IP (Modbus TCP)",
-          "modbus_port": "Modbus Port"
+          "update_interval": "Update Interval (seconds)"
         },
         "data_description": {
-          "name": "Used as the mDNS hostname (e.g. 'fronius-virtual' → fronius-virtual.local)",
-          "system_name": "Shown in the Wattpilot pairing screen, e.g. 'MyHome'. Defaults to the inverter name if left blank.",
-          "port": "Port for the Fronius Solar API HTTP server (default: 80)",
-          "update_interval": "How often to refresh sensor values in seconds (default: 10)",
-          "modbus_enabled": "Also emulate a Fronius Smart Meter IP via Modbus TCP — gives the Wattpilot a second way to receive grid data",
-          "modbus_port": "Modbus TCP port (default: 502 — use 5020 if HA lacks permission to bind port 502)"
+          "name": "Used as the mDNS hostname (e.g. 'my-inverter' → my-inverter.local). Lowercase letters and hyphens only.",
+          "system_name": "Shown in the Wattpilot pairing screen (e.g. 'MyHome'). Defaults to the inverter name if left blank.",
+          "port": "Port for the Fronius Solar API HTTP server (default: 80). Use a port above 1024 if HA lacks permission to bind 80.",
+          "update_interval": "How often to refresh sensor values in seconds (default: 10)."
         }
       },
       "grid": {
-        "title": "Grid Settings",
-        "description": "Map your electricity meter sensor to the grid power field. Enable 'Configure per-phase sensors' at the bottom if your meter provides per-phase data for improved Wattpilot load balancing.",
+        "title": "Grid Configuration",
+        "description": "Map your electricity meter sensor. Enable 'Configure per-phase sensors' if your meter provides per-phase data for Wattpilot load balancing.",
         "data": {
           "p_grid_dual_mode": "Use Separate Import/Export Sensors",
           "p_grid_sensor": "Grid Power Sensor",
@@ -36,17 +32,17 @@
         },
         "data_description": {
           "p_grid_dual_mode": "Enable if your meter provides separate import and export readings instead of a single signed value.",
-          "p_grid_sensor": "Measures power at your electricity meter. Negative = exporting solar to grid, Positive = importing from grid.",
-          "p_grid_sensor_pos": "Measures power being imported from the grid (positive values only). Used with dual sensor mode.",
-          "p_grid_sensor_neg": "Measures power being exported to the grid (positive values only, will be treated as negative). Used with dual sensor mode.",
-          "p_grid_invert": "Enable if your sensor reports export as positive — this will flip the sign.",
-          "grid_phases": "Single phase for single-phase supply, three phase for 3-phase. Affects load balancing.",
-          "grid_ct_rating": "Main circuit breaker rating in amps — Wattpilot uses this to prevent overloading. Default: 32A. Can also be set directly in the Solar.wattpilot app.",
-          "configure_per_phase": "Show the next step to map per-phase power, current, voltage, power factor, and reactive power sensors. Only needed if your meter provides per-phase data."
+          "p_grid_sensor": "Power at your electricity meter. Negative = exporting to grid, Positive = importing from grid.",
+          "p_grid_sensor_pos": "Power being imported from the grid (positive values only).",
+          "p_grid_sensor_neg": "Power being exported to the grid (positive values only — will be treated as negative).",
+          "p_grid_invert": "Enable if your sensor reports export as positive — this flips the sign.",
+          "grid_phases": "Match your electrical supply. Affects how load balancing is calculated.",
+          "grid_ct_rating": "Main circuit breaker rating in amps. Wattpilot uses this to prevent overloading. Default: 32A.",
+          "configure_per_phase": "Shows additional steps to map per-phase power, current, voltage, power factor, and reactive power sensors."
         }
       },
       "generation": {
-        "title": "Solar & Battery",
+        "title": "PV & Battery",
         "description": "Map your solar generation, battery, and house load sensors. All fields are optional — leave blank if not available.",
         "data": {
           "p_pv_sensor": "Solar Generation Sensor",
@@ -61,54 +57,74 @@
           "soc_sensor": "Battery State of Charge"
         },
         "data_description": {
-          "p_pv_sensor": "Measures total solar panel output in watts. Should always be a positive value.",
+          "p_pv_sensor": "Total solar panel output in watts. Should always be a positive value.",
           "p_pv_invert": "Enable if your solar sensor reports negative values during generation.",
           "p_akku_dual_mode": "Enable if your battery reports charge and discharge as separate positive-value sensors.",
-          "p_akku_sensor": "Measures battery charge/discharge power. Positive = charging, Negative = discharging.",
-          "p_akku_sensor_pos": "Measures power going into the battery (positive values only).",
-          "p_akku_sensor_neg": "Measures power coming out of the battery (positive values only, will be treated as negative).",
+          "p_akku_sensor": "Battery charge/discharge power. Positive = charging, Negative = discharging.",
+          "p_akku_sensor_pos": "Power going into the battery (positive values only).",
+          "p_akku_sensor_neg": "Power coming out of the battery (positive values only — will be treated as negative).",
           "p_akku_invert": "Enable if your battery sensor sign is reversed.",
-          "p_load_sensor": "Measures total household power consumption. Should be a negative value.",
+          "p_load_sensor": "Total household power consumption. Should be a negative value.",
           "p_load_invert": "Enable if your consumption sensor reports positive values.",
-          "soc_sensor": "Reports battery percentage from 0–100%. Used by the Wattpilot for battery threshold charging decisions."
+          "soc_sensor": "Battery percentage 0–100%. Used by the Wattpilot for battery threshold charging decisions."
         }
       },
       "advanced": {
-        "title": "Per-Phase Load Balancing",
-        "description": "Optional per-phase sensors for improved Wattpilot load balancing accuracy. Leave blank for any sensors your meter does not provide — values will be derived automatically.",
+        "title": "Per-Phase Load Balancing — Phase A",
+        "description": "Phase A sensors for Wattpilot load balancing accuracy. Leave blank for any sensors your meter does not provide — values will be derived automatically.",
         "data": {
-          "p_grid_phase_a": "P_Grid Phase A (W)",
-          "p_grid_phase_b": "P_Grid Phase B (W)",
-          "p_grid_phase_c": "P_Grid Phase C (W)",
+          "p_grid_phase_a": "Grid Power Phase A (W)",
           "i_grid_phase_a": "Grid Current Phase A (A)",
+          "v_grid_phase_a": "Grid Voltage Phase A (V)",
+          "power_factor_phase_a": "Power Factor Phase A",
+          "q_grid_phase_a": "Reactive Power Phase A (VAr)"
+        },
+        "data_description": {
+          "p_grid_phase_a": "Phase A grid power. Leave blank to auto-split total grid power equally across phases.",
+          "i_grid_phase_a": "Phase A grid current in amps. Derived from P/V if not set.",
+          "v_grid_phase_a": "Phase A grid voltage. Defaults to 240V if not set.",
+          "power_factor_phase_a": "Phase A power factor from your Smart Meter. Improves load balancing accuracy.",
+          "q_grid_phase_a": "Phase A reactive power from your Smart Meter. Improves apparent power accuracy."
+        }
+      },
+      "three_phase": {
+        "title": "Per-Phase Load Balancing — Phases B & C",
+        "description": "Phases B and C sensors for three-phase load balancing. Leave blank for any sensors your meter does not provide.",
+        "data": {
+          "p_grid_phase_b": "Grid Power Phase B (W)",
+          "p_grid_phase_c": "Grid Power Phase C (W)",
           "i_grid_phase_b": "Grid Current Phase B (A)",
           "i_grid_phase_c": "Grid Current Phase C (A)",
-          "v_grid_phase_a": "Grid Voltage Phase A (V)",
           "v_grid_phase_b": "Grid Voltage Phase B (V)",
           "v_grid_phase_c": "Grid Voltage Phase C (V)",
-          "power_factor_phase_a": "Power Factor Phase A",
           "power_factor_phase_b": "Power Factor Phase B",
           "power_factor_phase_c": "Power Factor Phase C",
-          "q_grid_phase_a": "Reactive Power Phase A (VAr)",
           "q_grid_phase_b": "Reactive Power Phase B (VAr)",
           "q_grid_phase_c": "Reactive Power Phase C (VAr)"
         },
         "data_description": {
-          "p_grid_phase_a": "Per-phase grid power for load balancing. Leave blank to auto-split total P_Grid equally across phases.",
-          "p_grid_phase_b": "3-phase only. Leave blank if not available.",
-          "p_grid_phase_c": "3-phase only. Leave blank if not available.",
-          "i_grid_phase_a": "Per-phase grid current in amps. Use if your meter provides current rather than power. Can also be configured directly in the Solar.wattpilot app.",
-          "i_grid_phase_b": "3-phase only.",
-          "i_grid_phase_c": "3-phase only.",
-          "v_grid_phase_a": "Optional. Defaults to 240V if not set. Only needed if your voltage varies significantly.",
-          "v_grid_phase_b": "3-phase only. Defaults to 240V if not set.",
-          "v_grid_phase_c": "3-phase only. Defaults to 240V if not set.",
-          "power_factor_phase_a": "Optional. From your Smart Meter. Improves load balancing accuracy.",
-          "power_factor_phase_b": "Optional. From your Smart Meter. Improves load balancing accuracy.",
-          "power_factor_phase_c": "Optional. From your Smart Meter. Improves load balancing accuracy.",
-          "q_grid_phase_a": "Optional. From your Smart Meter. Improves load balancing accuracy.",
-          "q_grid_phase_b": "Optional. From your Smart Meter. Improves load balancing accuracy.",
-          "q_grid_phase_c": "Optional. From your Smart Meter. Improves load balancing accuracy."
+          "p_grid_phase_b": "Phase B grid power. Leave blank to auto-split equally.",
+          "p_grid_phase_c": "Phase C grid power. Leave blank to auto-split equally.",
+          "i_grid_phase_b": "Phase B grid current. Derived from P/V if not set.",
+          "i_grid_phase_c": "Phase C grid current. Derived from P/V if not set.",
+          "v_grid_phase_b": "Phase B grid voltage. Defaults to 240V if not set.",
+          "v_grid_phase_c": "Phase C grid voltage. Defaults to 240V if not set.",
+          "power_factor_phase_b": "Phase B power factor from your Smart Meter.",
+          "power_factor_phase_c": "Phase C power factor from your Smart Meter.",
+          "q_grid_phase_b": "Phase B reactive power from your Smart Meter.",
+          "q_grid_phase_c": "Phase C reactive power from your Smart Meter."
+        }
+      },
+      "modbus": {
+        "title": "Advanced Options",
+        "description": "Optionally emulate a Fronius Smart Meter IP over Modbus TCP. Useful if you have a real Fronius SnapIN inverter on the same network that needs a grid meter.",
+        "data": {
+          "modbus_enabled": "Enable Smart Meter IP (Modbus TCP)",
+          "modbus_port": "Modbus Port"
+        },
+        "data_description": {
+          "modbus_enabled": "Emulate a Fronius Smart Meter IP via Modbus TCP so a real SnapIN inverter can use HA as its grid meter.",
+          "modbus_port": "Modbus TCP port (default: 502 — use 5020 if HA lacks permission to bind port 502)."
         }
       }
     },
@@ -124,22 +140,18 @@
     "step": {
       "init": {
         "title": "Basic Settings",
-        "description": "Update connection settings and display name.",
+        "description": "Update the HTTP server port, update interval, and display name.",
         "data": {
           "port": "HTTP Server Port",
           "update_interval": "Update Interval (seconds)",
-          "system_name": "System Display Name",
-          "modbus_enabled": "Enable Smart Meter IP (Modbus TCP)",
-          "modbus_port": "Modbus Port"
+          "system_name": "System Display Name"
         },
         "data_description": {
-          "system_name": "Shown in the Wattpilot pairing screen. Defaults to the inverter name if left blank.",
-          "modbus_enabled": "Also emulate a Fronius Smart Meter IP via Modbus TCP",
-          "modbus_port": "Modbus TCP port (default: 502 — use 5020 if HA lacks permission to bind port 502)"
+          "system_name": "Shown in the Wattpilot pairing screen. Defaults to the inverter name if left blank."
         }
       },
       "grid": {
-        "title": "Grid Settings",
+        "title": "Grid Configuration",
         "description": "Update your electricity meter sensor and phase settings.",
         "data": {
           "p_grid_dual_mode": "Use Separate Import/Export Sensors",
@@ -153,17 +165,17 @@
         },
         "data_description": {
           "p_grid_dual_mode": "Enable if your meter provides separate import and export readings instead of a single signed value.",
-          "p_grid_sensor": "Measures power at your electricity meter. Negative = exporting solar to grid, Positive = importing from grid.",
-          "p_grid_sensor_pos": "Measures power being imported from the grid (positive values only).",
-          "p_grid_sensor_neg": "Measures power being exported to the grid (positive values only, will be treated as negative).",
-          "p_grid_invert": "Enable if your sensor reports export as positive — this will flip the sign.",
-          "grid_phases": "Single phase for single-phase supply, three phase for 3-phase. Affects load balancing.",
-          "grid_ct_rating": "Main circuit breaker rating in amps — Wattpilot uses this to prevent overloading. Default: 32A.",
-          "configure_per_phase": "Show the next step to update per-phase sensors. If unchecked, existing per-phase settings are preserved."
+          "p_grid_sensor": "Power at your electricity meter. Negative = exporting to grid, Positive = importing from grid.",
+          "p_grid_sensor_pos": "Power being imported from the grid (positive values only).",
+          "p_grid_sensor_neg": "Power being exported to the grid (positive values only — will be treated as negative).",
+          "p_grid_invert": "Enable if your sensor reports export as positive — this flips the sign.",
+          "grid_phases": "Match your electrical supply. Affects how load balancing is calculated.",
+          "grid_ct_rating": "Main circuit breaker rating in amps. Default: 32A.",
+          "configure_per_phase": "Show the per-phase steps to update sensors. If unchecked, existing Phase A settings are preserved and Phase B/C are cleared if switching to single-phase."
         }
       },
       "generation": {
-        "title": "Solar & Battery",
+        "title": "PV & Battery",
         "description": "Update solar generation, battery, and house load sensors.",
         "data": {
           "p_pv_sensor": "Solar Generation Sensor",
@@ -178,54 +190,74 @@
           "soc_sensor": "Battery State of Charge"
         },
         "data_description": {
-          "p_pv_sensor": "Measures total solar panel output in watts. Should always be a positive value.",
+          "p_pv_sensor": "Total solar panel output in watts. Should always be a positive value.",
           "p_pv_invert": "Enable if your solar sensor reports negative values during generation.",
           "p_akku_dual_mode": "Enable if your battery reports charge and discharge as separate positive-value sensors.",
-          "p_akku_sensor": "Measures battery charge/discharge power. Positive = charging, Negative = discharging.",
-          "p_akku_sensor_pos": "Measures power going into the battery (positive values only).",
-          "p_akku_sensor_neg": "Measures power coming out of the battery (positive values only, will be treated as negative).",
+          "p_akku_sensor": "Battery charge/discharge power. Positive = charging, Negative = discharging.",
+          "p_akku_sensor_pos": "Power going into the battery (positive values only).",
+          "p_akku_sensor_neg": "Power coming out of the battery (positive values only — will be treated as negative).",
           "p_akku_invert": "Enable if your battery sensor sign is reversed.",
-          "p_load_sensor": "Measures total household power consumption. Should be a negative value.",
+          "p_load_sensor": "Total household power consumption. Should be a negative value.",
           "p_load_invert": "Enable if your consumption sensor reports positive values.",
-          "soc_sensor": "Reports battery percentage from 0–100%. Used by the Wattpilot for battery threshold charging decisions."
+          "soc_sensor": "Battery percentage 0–100%."
         }
       },
       "advanced": {
-        "title": "Per-Phase Load Balancing",
-        "description": "Update per-phase sensors for Wattpilot load balancing. Leave blank for any sensors your meter does not provide.",
+        "title": "Per-Phase Load Balancing — Phase A",
+        "description": "Update Phase A sensors for Wattpilot load balancing. Leave blank for any sensors your meter does not provide.",
         "data": {
-          "p_grid_phase_a": "P_Grid Phase A (W)",
-          "p_grid_phase_b": "P_Grid Phase B (W)",
-          "p_grid_phase_c": "P_Grid Phase C (W)",
+          "p_grid_phase_a": "Grid Power Phase A (W)",
           "i_grid_phase_a": "Grid Current Phase A (A)",
+          "v_grid_phase_a": "Grid Voltage Phase A (V)",
+          "power_factor_phase_a": "Power Factor Phase A",
+          "q_grid_phase_a": "Reactive Power Phase A (VAr)"
+        },
+        "data_description": {
+          "p_grid_phase_a": "Phase A grid power. Leave blank to auto-split total grid power equally.",
+          "i_grid_phase_a": "Phase A grid current. Derived from P/V if not set.",
+          "v_grid_phase_a": "Phase A grid voltage. Defaults to 240V if not set.",
+          "power_factor_phase_a": "Phase A power factor from your Smart Meter.",
+          "q_grid_phase_a": "Phase A reactive power from your Smart Meter."
+        }
+      },
+      "three_phase": {
+        "title": "Per-Phase Load Balancing — Phases B & C",
+        "description": "Update Phases B and C sensors for three-phase load balancing.",
+        "data": {
+          "p_grid_phase_b": "Grid Power Phase B (W)",
+          "p_grid_phase_c": "Grid Power Phase C (W)",
           "i_grid_phase_b": "Grid Current Phase B (A)",
           "i_grid_phase_c": "Grid Current Phase C (A)",
-          "v_grid_phase_a": "Grid Voltage Phase A (V)",
           "v_grid_phase_b": "Grid Voltage Phase B (V)",
           "v_grid_phase_c": "Grid Voltage Phase C (V)",
-          "power_factor_phase_a": "Power Factor Phase A",
           "power_factor_phase_b": "Power Factor Phase B",
           "power_factor_phase_c": "Power Factor Phase C",
-          "q_grid_phase_a": "Reactive Power Phase A (VAr)",
           "q_grid_phase_b": "Reactive Power Phase B (VAr)",
           "q_grid_phase_c": "Reactive Power Phase C (VAr)"
         },
         "data_description": {
-          "p_grid_phase_a": "Per-phase grid power for load balancing. Leave blank to auto-split total P_Grid equally.",
-          "p_grid_phase_b": "3-phase only. Leave blank if not available.",
-          "p_grid_phase_c": "3-phase only. Leave blank if not available.",
-          "i_grid_phase_a": "Per-phase grid current in amps. Can also be configured directly in the Solar.wattpilot app.",
-          "i_grid_phase_b": "3-phase only.",
-          "i_grid_phase_c": "3-phase only.",
-          "v_grid_phase_a": "Optional. Defaults to 240V if not set.",
-          "v_grid_phase_b": "3-phase only. Defaults to 240V if not set.",
-          "v_grid_phase_c": "3-phase only. Defaults to 240V if not set.",
-          "power_factor_phase_a": "Optional. From your Smart Meter. Improves load balancing accuracy.",
-          "power_factor_phase_b": "Optional. From your Smart Meter. Improves load balancing accuracy.",
-          "power_factor_phase_c": "Optional. From your Smart Meter. Improves load balancing accuracy.",
-          "q_grid_phase_a": "Optional. From your Smart Meter. Improves load balancing accuracy.",
-          "q_grid_phase_b": "Optional. From your Smart Meter. Improves load balancing accuracy.",
-          "q_grid_phase_c": "Optional. From your Smart Meter. Improves load balancing accuracy."
+          "p_grid_phase_b": "Phase B grid power. Leave blank to auto-split equally.",
+          "p_grid_phase_c": "Phase C grid power. Leave blank to auto-split equally.",
+          "i_grid_phase_b": "Phase B grid current. Derived from P/V if not set.",
+          "i_grid_phase_c": "Phase C grid current. Derived from P/V if not set.",
+          "v_grid_phase_b": "Phase B grid voltage. Defaults to 240V if not set.",
+          "v_grid_phase_c": "Phase C grid voltage. Defaults to 240V if not set.",
+          "power_factor_phase_b": "Phase B power factor from your Smart Meter.",
+          "power_factor_phase_c": "Phase C power factor from your Smart Meter.",
+          "q_grid_phase_b": "Phase B reactive power from your Smart Meter.",
+          "q_grid_phase_c": "Phase C reactive power from your Smart Meter."
+        }
+      },
+      "modbus": {
+        "title": "Advanced Options",
+        "description": "Update Modbus Smart Meter IP settings.",
+        "data": {
+          "modbus_enabled": "Enable Smart Meter IP (Modbus TCP)",
+          "modbus_port": "Modbus Port"
+        },
+        "data_description": {
+          "modbus_enabled": "Emulate a Fronius Smart Meter IP via Modbus TCP.",
+          "modbus_port": "Modbus TCP port (default: 502 — use 5020 if HA lacks permission to bind port 502)."
         }
       }
     }
