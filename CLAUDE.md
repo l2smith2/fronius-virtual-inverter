@@ -5,9 +5,12 @@ Emulates a Fronius GEN24 inverter + Fronius Smart Meter IP on the local network 
 
 ## Two emulation modes
 1. **HTTP Solar API v1** (port 80) — impersonates a Fronius Datamanager 2.0 inverter
-   - Endpoints: GetAPIVersion.cgi, GetPowerFlowRealtimeData.fcgi, GetLoggerInfo.fcgi
+   - Endpoints: GetAPIVersion.cgi, GetPowerFlowRealtimeData.fcgi, GetLoggerInfo.fcgi, GetInverterInfo.fcgi, GetMeterRealtimeData.fcgi, GetStorageRealtimeData.fcgi, GetActiveDeviceInfo.cgi
    - DT=102, CompatibilityRange=1.8-1
-   - GetLoggerInfo returns UniqueID="240.{serial}" and Systemname
+   - GetLoggerInfo returns UniqueID="240.{system_name}" and Systemname
+   - GetInverterInfo returns CustomName=system_name, UniqueID=serial, MaxACCurrent=ct_rating
+   - GetMeterRealtimeData returns per-phase power and current (PowerReal_P_Phase_1/2/3, Current_AC_Phase_1/2/3)
+   - GetActiveDeviceInfo responds to ?DeviceClass=Meter with address 0, DT=-1
 
 2. **Modbus TCP Smart Meter IP** (port 502) — emulates Fronius Smart Meter IP
    - SunSpec float model 213 (three-phase)
@@ -16,7 +19,7 @@ Emulates a Fronius GEN24 inverter + Fronius Smart Meter IP on the local network 
    - W register at wire address 40097 (registers 40098-40099) — confirmed by live test
    - Successfully detected by real Fronius SnapIN at 192.168.2.79
    - SnapIN adds it as TCP meter at 192.168.2.153:502, unit ID 240
-   - Data appears in SolarWeb
+   - Data appears in SolarWeb ✓
 
 ## mDNS discovery — WORKING ✓
 
@@ -37,30 +40,42 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 - Packet size must be kept under 400 bytes — full DeviceMeta JSON grew packets to 730 bytes; stripped to essential fields only
 - `cci` WebSocket property holds the paired inverter: `{ip, label, commonName, paired, reachableMdns, reachableUdp, reachableHttp}` — **read-only**, cannot be written via WebSocket
 - SnapIN (192.168.2.79) sends **zero** mDNS traffic once paired — goes completely silent after pairing
-- SnapIN actively polls our virtual Smart Meter on port 502 every second ✓
-- SnapIN actively polls our HTTP Solar API on port 80 ✓
-- `ido` WebSocket property can push inverter data directly to Wattpilot but requires sudo/privileged auth (separate issue)
 
-**Result:** Wattpilot now discovers, pairs, and uses the virtual inverter for PV surplus (Eco) charging. ✓
+**Result:** Wattpilot discovers, pairs, and uses the virtual inverter for PV surplus (Eco) charging. ✓
 
-## Remaining known issues
-- **Load Balancing shows "not available"** — Wattpilot needs per-phase load data (L1/L2/L3 W) which the current API responses do not provide
-- **Device display name** — comes from `Systemname` field in `GetLoggerInfo` response; configurable in integration setup via the System Name option
+## Display name / serial number
+- `system_name` (configured in setup) is used as the serial — so UniqueID becomes `240.<system_name>` (e.g. `240.Tesla`)
+- This makes the Wattpilot pairing screen show `Tesla (192.168.2.153)` instead of a hex hash
+- `GetInverterInfo.CustomName` also uses `system_name`
+- `GetLoggerInfo.UniqueID` uses `240.<system_name>`
+- mDNS TXT records include `CommonName=pilot-0.5e-<system_name>`, `UniqueID=240.<system_name>`, `Systemname=<system_name>`
+- Falls back to 8-char MD5 hex hash of entry_id if system_name is not set
+
+## Per-phase load balancing
+- `grid_phases` config: "1" (single-phase) or "3" (three-phase), default single
+- `grid_ct_rating`: circuit breaker amps, default 32A — reported as `MaxACCurrent` in GetInverterInfo
+- Optional per-phase power sensors: `p_grid_phase_a/b/c` (W)
+- Optional per-phase current sensors: `i_grid_phase_a/b/c` (A) — alternative to power
+- If per-phase sensors not configured: auto-splits total P_Grid equally across phases (or all on phase 1 for single-phase)
+- If current sensors not provided: derives from P/230V
+- CT rating and per-phase current can also be configured directly in the Solar.wattpilot app
+
+## Confirmed working ✓
+- Wattpilot discovery and pairing via mDNS ✓
+- PV surplus (Eco) charging active ✓
+- HTTP Solar API serving live data on port 80 ✓
+- Modbus Smart Meter IP on port 502 — polled by SnapIN every second ✓
+- SolarWeb shows virtual meter data ✓
+- fronius-virtual.local resolves via _http._tcp mDNS ✓
+- Sensor unit auto-conversion: kW→W, kWh→Wh, MW→W, MWh→Wh ✓
+- Per-phase data in GetMeterRealtimeData for load balancing ✓
+- system_name used as serial for human-readable display name ✓
 
 ## Network topology
 - HA host: 192.168.2.153 (Proxmox VM)
 - Wattpilot: 192.168.2.225 (Golden_Duck_91017579, firmware 42.5)
-- Real SnapIN inverter: 192.168.2.79 (Fronius Datamanager 2.0, DT=102)
+- Real SnapIN inverter: 192.168.2.79 (Fronius Datamanager 2.0, DT=102, name: Smith, serial: 240.1248152)
 - Proxmox host: separate machine, vmbr0 bridge, multicast snooping disabled
-
-## Key confirmed facts
-- Wattpilot does NOT subnet scan — purely mDNS PTR queries
-- Wattpilot paired with SnapIN (Smith, serial 240.1248152) in normal use; can be unpaired for testing
-- Virtual Smart Meter successfully added to SnapIN and visible in SolarWeb ✓
-- HTTP Solar API serving live data correctly on port 80 ✓
-- fronius-virtual.local resolves correctly via _http._tcp mDNS ✓
-- Full PV surplus (Eco) charging via virtual inverter working ✓
-- Sensor unit auto-conversion (kW→W, kWh→Wh, MW→W, MWh→Wh) in sensor_reader.py ✓
 
 ## Sign conventions (Fronius)
 - P_Grid: positive = import, negative = export
