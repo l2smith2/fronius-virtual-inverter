@@ -39,9 +39,18 @@ from .const import (
     CONF_P_PV_INVERT,
     CONF_P_PV_SENSOR,
     CONF_PORT,
+    CONF_POWER_FACTOR_PHASE_A,
+    CONF_POWER_FACTOR_PHASE_B,
+    CONF_POWER_FACTOR_PHASE_C,
+    CONF_Q_GRID_PHASE_A,
+    CONF_Q_GRID_PHASE_B,
+    CONF_Q_GRID_PHASE_C,
     CONF_SOC_SENSOR,
     CONF_SYSTEM_NAME,
     CONF_UPDATE_INTERVAL,
+    CONF_V_GRID_PHASE_A,
+    CONF_V_GRID_PHASE_B,
+    CONF_V_GRID_PHASE_C,
     DEFAULT_GRID_CT_RATING,
     DEFAULT_MODBUS_PORT,
     DEFAULT_NAME,
@@ -52,17 +61,18 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# Entity selector for sensors (numeric/power sensors)
-SENSOR_SELECTOR = selector.EntitySelector(
-    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
+_PER_PHASE_KEYS: tuple[str, ...] = (
+    CONF_P_GRID_PHASE_A, CONF_P_GRID_PHASE_B, CONF_P_GRID_PHASE_C,
+    CONF_I_GRID_PHASE_A, CONF_I_GRID_PHASE_B, CONF_I_GRID_PHASE_C,
+    CONF_V_GRID_PHASE_A, CONF_V_GRID_PHASE_B, CONF_V_GRID_PHASE_C,
+    CONF_POWER_FACTOR_PHASE_A, CONF_POWER_FACTOR_PHASE_B, CONF_POWER_FACTOR_PHASE_C,
+    CONF_Q_GRID_PHASE_A, CONF_Q_GRID_PHASE_B, CONF_Q_GRID_PHASE_C,
 )
-OPTIONAL_SENSOR_SELECTOR = selector.EntitySelector(
-    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN, multiple=False)
-)
+
+_ES = selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
 
 
 def _port_available(port: int) -> bool:
-    """Check if a port is available."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
             s.bind(("", int(port)))
@@ -71,123 +81,71 @@ def _port_available(port: int) -> bool:
             return False
 
 
-def _basic_schema(defaults: dict) -> vol.Schema:
-    return vol.Schema(
-        {
-            vol.Required(CONF_NAME, default=defaults.get(CONF_NAME, DEFAULT_NAME)): str,
-            vol.Required(CONF_PORT, default=defaults.get(CONF_PORT, DEFAULT_PORT)): vol.All(
-                int, vol.Range(min=1, max=65535)
-            ),
-            vol.Required(
-                CONF_UPDATE_INTERVAL,
-                default=defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL),
-            ): vol.All(int, vol.Range(min=5, max=300)),
-        }
-    )
+def _has_per_phase(config: dict) -> bool:
+    return any(config.get(k) for k in _PER_PHASE_KEYS)
 
 
-def _sensor_schema(defaults: dict) -> vol.Schema:
-    """Build the sensor mapping schema."""
-    return vol.Schema(
-        {
-            # P_Grid
-            vol.Optional(CONF_P_GRID_DUAL_MODE, default=defaults.get(CONF_P_GRID_DUAL_MODE, False)): bool,
-            vol.Optional(CONF_P_GRID_SENSOR, default=defaults.get(CONF_P_GRID_SENSOR, "")): str,
-            vol.Optional(CONF_P_GRID_SENSOR_POS, default=defaults.get(CONF_P_GRID_SENSOR_POS, "")): str,
-            vol.Optional(CONF_P_GRID_SENSOR_NEG, default=defaults.get(CONF_P_GRID_SENSOR_NEG, "")): str,
-            vol.Optional(CONF_P_GRID_INVERT, default=defaults.get(CONF_P_GRID_INVERT, False)): bool,
-            # P_PV
-            vol.Optional(CONF_P_PV_SENSOR, default=defaults.get(CONF_P_PV_SENSOR, "")): str,
-            vol.Optional(CONF_P_PV_INVERT, default=defaults.get(CONF_P_PV_INVERT, False)): bool,
-            # P_Akku
-            vol.Optional(CONF_P_AKKU_DUAL_MODE, default=defaults.get(CONF_P_AKKU_DUAL_MODE, False)): bool,
-            vol.Optional(CONF_P_AKKU_SENSOR, default=defaults.get(CONF_P_AKKU_SENSOR, "")): str,
-            vol.Optional(CONF_P_AKKU_SENSOR_POS, default=defaults.get(CONF_P_AKKU_SENSOR_POS, "")): str,
-            vol.Optional(CONF_P_AKKU_SENSOR_NEG, default=defaults.get(CONF_P_AKKU_SENSOR_NEG, "")): str,
-            vol.Optional(CONF_P_AKKU_INVERT, default=defaults.get(CONF_P_AKKU_INVERT, False)): bool,
-            # P_Load
-            vol.Optional(CONF_P_LOAD_SENSOR, default=defaults.get(CONF_P_LOAD_SENSOR, "")): str,
-            vol.Optional(CONF_P_LOAD_INVERT, default=defaults.get(CONF_P_LOAD_INVERT, False)): bool,
-            # SOC
-            vol.Optional(CONF_SOC_SENSOR, default=defaults.get(CONF_SOC_SENSOR, "")): str,
-        }
-    )
+def _opt(key: str, current: dict) -> vol.Optional:
+    """vol.Optional with suggested_value when a current value exists."""
+    val = current.get(key)
+    if val:
+        return vol.Optional(key, description={"suggested_value": val})
+    return vol.Optional(key)
 
 
-def _sensor_schema_ui(defaults: dict) -> vol.Schema:
-    """Sensor schema with UI selectors."""
-    return vol.Schema(
-        {
-            # P_Grid
-            vol.Optional(CONF_P_GRID_DUAL_MODE, default=defaults.get(CONF_P_GRID_DUAL_MODE, False)): selector.BooleanSelector(),
-            vol.Optional(CONF_P_GRID_SENSOR): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-            ),
-            vol.Optional(CONF_P_GRID_SENSOR_POS): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-            ),
-            vol.Optional(CONF_P_GRID_SENSOR_NEG): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-            ),
-            vol.Optional(CONF_P_GRID_INVERT, default=defaults.get(CONF_P_GRID_INVERT, False)): selector.BooleanSelector(),
-            # Grid phase configuration
-            vol.Optional(CONF_GRID_PHASES, default=defaults.get(CONF_GRID_PHASES, "1")): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=[
-                        {"value": "1", "label": "Single phase (1)"},
-                        {"value": "3", "label": "Three phase (3)"},
-                    ]
-                )
-            ),
-            vol.Optional(CONF_GRID_CT_RATING, default=defaults.get(CONF_GRID_CT_RATING, DEFAULT_GRID_CT_RATING)): selector.NumberSelector(
-                selector.NumberSelectorConfig(min=6, max=125, step=1, unit_of_measurement="A", mode="box")
-            ),
-            vol.Optional(CONF_P_GRID_PHASE_A): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-            ),
-            vol.Optional(CONF_P_GRID_PHASE_B): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-            ),
-            vol.Optional(CONF_P_GRID_PHASE_C): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-            ),
-            vol.Optional(CONF_I_GRID_PHASE_A): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-            ),
-            vol.Optional(CONF_I_GRID_PHASE_B): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-            ),
-            vol.Optional(CONF_I_GRID_PHASE_C): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-            ),
-            # P_PV
-            vol.Optional(CONF_P_PV_SENSOR): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-            ),
-            vol.Optional(CONF_P_PV_INVERT, default=defaults.get(CONF_P_PV_INVERT, False)): selector.BooleanSelector(),
-            # P_Akku
-            vol.Optional(CONF_P_AKKU_DUAL_MODE, default=defaults.get(CONF_P_AKKU_DUAL_MODE, False)): selector.BooleanSelector(),
-            vol.Optional(CONF_P_AKKU_SENSOR): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-            ),
-            vol.Optional(CONF_P_AKKU_SENSOR_POS): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-            ),
-            vol.Optional(CONF_P_AKKU_SENSOR_NEG): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-            ),
-            vol.Optional(CONF_P_AKKU_INVERT, default=defaults.get(CONF_P_AKKU_INVERT, False)): selector.BooleanSelector(),
-            # P_Load
-            vol.Optional(CONF_P_LOAD_SENSOR): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-            ),
-            vol.Optional(CONF_P_LOAD_INVERT, default=defaults.get(CONF_P_LOAD_INVERT, False)): selector.BooleanSelector(),
-            # SOC
-            vol.Optional(CONF_SOC_SENSOR): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-            ),
-        }
-    )
+def _grid_schema(current: dict) -> vol.Schema:
+    return vol.Schema({
+        vol.Optional(CONF_P_GRID_DUAL_MODE, default=current.get(CONF_P_GRID_DUAL_MODE, False)): selector.BooleanSelector(),
+        _opt(CONF_P_GRID_SENSOR, current): selector.EntitySelector(_ES),
+        _opt(CONF_P_GRID_SENSOR_POS, current): selector.EntitySelector(_ES),
+        _opt(CONF_P_GRID_SENSOR_NEG, current): selector.EntitySelector(_ES),
+        vol.Optional(CONF_P_GRID_INVERT, default=current.get(CONF_P_GRID_INVERT, False)): selector.BooleanSelector(),
+        vol.Optional(CONF_GRID_PHASES, default=current.get(CONF_GRID_PHASES, "1")): selector.SelectSelector(
+            selector.SelectSelectorConfig(options=[
+                {"value": "1", "label": "Single phase (1)"},
+                {"value": "3", "label": "Three phase (3)"},
+            ])
+        ),
+        vol.Optional(CONF_GRID_CT_RATING, default=current.get(CONF_GRID_CT_RATING, DEFAULT_GRID_CT_RATING)): selector.NumberSelector(
+            selector.NumberSelectorConfig(min=6, max=125, step=1, unit_of_measurement="A", mode="box")
+        ),
+        vol.Optional("configure_per_phase", default=_has_per_phase(current)): selector.BooleanSelector(),
+    })
+
+
+def _generation_schema(current: dict) -> vol.Schema:
+    return vol.Schema({
+        _opt(CONF_P_PV_SENSOR, current): selector.EntitySelector(_ES),
+        vol.Optional(CONF_P_PV_INVERT, default=current.get(CONF_P_PV_INVERT, False)): selector.BooleanSelector(),
+        vol.Optional(CONF_P_AKKU_DUAL_MODE, default=current.get(CONF_P_AKKU_DUAL_MODE, False)): selector.BooleanSelector(),
+        _opt(CONF_P_AKKU_SENSOR, current): selector.EntitySelector(_ES),
+        _opt(CONF_P_AKKU_SENSOR_POS, current): selector.EntitySelector(_ES),
+        _opt(CONF_P_AKKU_SENSOR_NEG, current): selector.EntitySelector(_ES),
+        vol.Optional(CONF_P_AKKU_INVERT, default=current.get(CONF_P_AKKU_INVERT, False)): selector.BooleanSelector(),
+        _opt(CONF_P_LOAD_SENSOR, current): selector.EntitySelector(_ES),
+        vol.Optional(CONF_P_LOAD_INVERT, default=current.get(CONF_P_LOAD_INVERT, False)): selector.BooleanSelector(),
+        _opt(CONF_SOC_SENSOR, current): selector.EntitySelector(_ES),
+    })
+
+
+def _advanced_schema(current: dict) -> vol.Schema:
+    return vol.Schema({
+        _opt(CONF_P_GRID_PHASE_A, current): selector.EntitySelector(_ES),
+        _opt(CONF_P_GRID_PHASE_B, current): selector.EntitySelector(_ES),
+        _opt(CONF_P_GRID_PHASE_C, current): selector.EntitySelector(_ES),
+        _opt(CONF_I_GRID_PHASE_A, current): selector.EntitySelector(_ES),
+        _opt(CONF_I_GRID_PHASE_B, current): selector.EntitySelector(_ES),
+        _opt(CONF_I_GRID_PHASE_C, current): selector.EntitySelector(_ES),
+        _opt(CONF_V_GRID_PHASE_A, current): selector.EntitySelector(_ES),
+        _opt(CONF_V_GRID_PHASE_B, current): selector.EntitySelector(_ES),
+        _opt(CONF_V_GRID_PHASE_C, current): selector.EntitySelector(_ES),
+        _opt(CONF_POWER_FACTOR_PHASE_A, current): selector.EntitySelector(_ES),
+        _opt(CONF_POWER_FACTOR_PHASE_B, current): selector.EntitySelector(_ES),
+        _opt(CONF_POWER_FACTOR_PHASE_C, current): selector.EntitySelector(_ES),
+        _opt(CONF_Q_GRID_PHASE_A, current): selector.EntitySelector(_ES),
+        _opt(CONF_Q_GRID_PHASE_B, current): selector.EntitySelector(_ES),
+        _opt(CONF_Q_GRID_PHASE_C, current): selector.EntitySelector(_ES),
+    })
 
 
 class FroniusVirtualInverterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -196,7 +154,8 @@ class FroniusVirtualInverterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
     VERSION = 1
 
     def __init__(self) -> None:
-        self._user_input: dict[str, Any] = {}
+        self._data: dict[str, Any] = {}
+        self._configure_per_phase: bool = False
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -206,62 +165,76 @@ class FroniusVirtualInverterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN)
         if user_input is not None:
             name = user_input[CONF_NAME]
             port = int(user_input[CONF_PORT])
-
-            # Check for duplicate name
             await self.async_set_unique_id(name)
             self._abort_if_unique_id_configured()
-
-            # Check port availability
             if not await self.hass.async_add_executor_job(_port_available, port):
                 errors[CONF_PORT] = "port_in_use"
-
             if user_input.get(CONF_MODBUS_ENABLED):
                 modbus_port = int(user_input[CONF_MODBUS_PORT])
                 if not await self.hass.async_add_executor_job(_port_available, modbus_port):
                     errors[CONF_MODBUS_PORT] = "port_in_use"
-
             if not errors:
-                self._user_input = user_input
-                return await self.async_step_sensors()
+                self._data.update(user_input)
+                return await self.async_step_grid()
 
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_NAME, default=DEFAULT_NAME): selector.TextSelector(),
-                    vol.Optional(CONF_SYSTEM_NAME): selector.TextSelector(),
-                    vol.Required(CONF_PORT, default=DEFAULT_PORT): selector.NumberSelector(
-                        selector.NumberSelectorConfig(min=1, max=65535, mode="box")
-                    ),
-                    vol.Required(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): selector.NumberSelector(
-                        selector.NumberSelectorConfig(min=5, max=300, step=1, unit_of_measurement="s", mode="box")
-                    ),
-                    vol.Optional(CONF_MODBUS_ENABLED, default=False): selector.BooleanSelector(),
-                    vol.Optional(CONF_MODBUS_PORT, default=DEFAULT_MODBUS_PORT): selector.NumberSelector(
-                        selector.NumberSelectorConfig(min=1, max=65535, mode="box")
-                    ),
-                }
-            ),
+            data_schema=vol.Schema({
+                vol.Required(CONF_NAME, default=DEFAULT_NAME): selector.TextSelector(),
+                vol.Optional(CONF_SYSTEM_NAME): selector.TextSelector(),
+                vol.Required(CONF_PORT, default=DEFAULT_PORT): selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=1, max=65535, mode="box")
+                ),
+                vol.Required(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=5, max=300, step=1, unit_of_measurement="s", mode="box")
+                ),
+                vol.Optional(CONF_MODBUS_ENABLED, default=False): selector.BooleanSelector(),
+                vol.Optional(CONF_MODBUS_PORT, default=DEFAULT_MODBUS_PORT): selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=1, max=65535, mode="box")
+                ),
+            }),
             errors=errors,
         )
 
-    async def async_step_sensors(
+    async def async_step_grid(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
         if user_input is not None:
-            # Merge with first step data
-            data = {**self._user_input, **user_input}
-            # Clean empty strings
-            data = {k: v for k, v in data.items() if v != ""}
-            return self.async_create_entry(
-                title=self._user_input[CONF_NAME],
-                data=data,
-            )
-
+            self._configure_per_phase = bool(user_input.pop("configure_per_phase", False))
+            self._data.update(user_input)
+            return await self.async_step_generation()
         return self.async_show_form(
-            step_id="sensors",
-            data_schema=_sensor_schema_ui({}),
+            step_id="grid",
+            data_schema=_grid_schema({}),
         )
+
+    async def async_step_generation(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        if user_input is not None:
+            self._data.update(user_input)
+            if self._configure_per_phase:
+                return await self.async_step_advanced()
+            return self._create_entry()
+        return self.async_show_form(
+            step_id="generation",
+            data_schema=_generation_schema({}),
+        )
+
+    async def async_step_advanced(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        if user_input is not None:
+            self._data.update(user_input)
+            return self._create_entry()
+        return self.async_show_form(
+            step_id="advanced",
+            data_schema=_advanced_schema({}),
+        )
+
+    def _create_entry(self) -> config_entries.FlowResult:
+        data = {k: v for k, v in self._data.items() if v not in ("", None)}
+        return self.async_create_entry(title=data[CONF_NAME], data=data)
 
     @staticmethod
     @callback
@@ -276,37 +249,38 @@ class FroniusVirtualInverterOptionsFlow(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         self._config_entry = config_entry
+        self._data: dict[str, Any] = {}
+        self._configure_per_phase: bool = False
+
+    def _current(self) -> dict[str, Any]:
+        return {**self._config_entry.data, **self._config_entry.options}
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
         errors: dict[str, str] = {}
-
-        current = {**self._config_entry.data, **self._config_entry.options}
+        current = self._current()
 
         if user_input is not None:
             port = int(user_input.get(CONF_PORT, current.get(CONF_PORT, DEFAULT_PORT)))
-            current_port = current.get(CONF_PORT, DEFAULT_PORT)
-
+            current_port = int(current.get(CONF_PORT, DEFAULT_PORT))
             if port != current_port:
                 if not await self.hass.async_add_executor_job(_port_available, port):
                     errors[CONF_PORT] = "port_in_use"
-
             modbus_enabled = bool(user_input.get(CONF_MODBUS_ENABLED, False))
             modbus_port = int(user_input.get(CONF_MODBUS_PORT, current.get(CONF_MODBUS_PORT, DEFAULT_MODBUS_PORT)))
             current_modbus_enabled = bool(current.get(CONF_MODBUS_ENABLED, False))
             current_modbus_port = int(current.get(CONF_MODBUS_PORT, DEFAULT_MODBUS_PORT))
-
             if modbus_enabled and (not current_modbus_enabled or modbus_port != current_modbus_port):
                 if not await self.hass.async_add_executor_job(_port_available, modbus_port):
                     errors[CONF_MODBUS_PORT] = "port_in_use"
-
             if not errors:
-                data = {k: v for k, v in user_input.items() if v != "" and v is not None}
-                return self.async_create_entry(title="", data=data)
+                self._data.update(user_input)
+                return await self.async_step_grid()
 
-        schema = vol.Schema(
-            {
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema({
                 vol.Optional(CONF_PORT, default=current.get(CONF_PORT, DEFAULT_PORT)): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=1, max=65535, mode="box")
                 ),
@@ -314,84 +288,57 @@ class FroniusVirtualInverterOptionsFlow(config_entries.OptionsFlow):
                     selector.NumberSelectorConfig(min=5, max=300, step=1, unit_of_measurement="s", mode="box")
                 ),
                 vol.Optional(CONF_SYSTEM_NAME, description={"suggested_value": current.get(CONF_SYSTEM_NAME)}): selector.TextSelector(),
-                # Modbus Smart Meter IP emulation
                 vol.Optional(CONF_MODBUS_ENABLED, default=current.get(CONF_MODBUS_ENABLED, False)): selector.BooleanSelector(),
                 vol.Optional(CONF_MODBUS_PORT, default=current.get(CONF_MODBUS_PORT, DEFAULT_MODBUS_PORT)): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=1, max=65535, mode="box")
                 ),
-                # P_Grid
-                vol.Optional(CONF_P_GRID_DUAL_MODE, default=current.get(CONF_P_GRID_DUAL_MODE, False)): selector.BooleanSelector(),
-                vol.Optional(CONF_P_GRID_SENSOR, description={"suggested_value": current.get(CONF_P_GRID_SENSOR)}): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-                ),
-                vol.Optional(CONF_P_GRID_SENSOR_POS, description={"suggested_value": current.get(CONF_P_GRID_SENSOR_POS)}): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-                ),
-                vol.Optional(CONF_P_GRID_SENSOR_NEG, description={"suggested_value": current.get(CONF_P_GRID_SENSOR_NEG)}): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-                ),
-                vol.Optional(CONF_P_GRID_INVERT, default=current.get(CONF_P_GRID_INVERT, False)): selector.BooleanSelector(),
-                # Grid phase configuration
-                vol.Optional(CONF_GRID_PHASES, default=current.get(CONF_GRID_PHASES, "1")): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=[
-                            {"value": "1", "label": "Single phase (1)"},
-                            {"value": "3", "label": "Three phase (3)"},
-                        ]
-                    )
-                ),
-                vol.Optional(CONF_GRID_CT_RATING, default=current.get(CONF_GRID_CT_RATING, DEFAULT_GRID_CT_RATING)): selector.NumberSelector(
-                    selector.NumberSelectorConfig(min=6, max=125, step=1, unit_of_measurement="A", mode="box")
-                ),
-                vol.Optional(CONF_P_GRID_PHASE_A, description={"suggested_value": current.get(CONF_P_GRID_PHASE_A)}): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-                ),
-                vol.Optional(CONF_P_GRID_PHASE_B, description={"suggested_value": current.get(CONF_P_GRID_PHASE_B)}): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-                ),
-                vol.Optional(CONF_P_GRID_PHASE_C, description={"suggested_value": current.get(CONF_P_GRID_PHASE_C)}): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-                ),
-                vol.Optional(CONF_I_GRID_PHASE_A, description={"suggested_value": current.get(CONF_I_GRID_PHASE_A)}): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-                ),
-                vol.Optional(CONF_I_GRID_PHASE_B, description={"suggested_value": current.get(CONF_I_GRID_PHASE_B)}): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-                ),
-                vol.Optional(CONF_I_GRID_PHASE_C, description={"suggested_value": current.get(CONF_I_GRID_PHASE_C)}): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-                ),
-                # P_PV
-                vol.Optional(CONF_P_PV_SENSOR, description={"suggested_value": current.get(CONF_P_PV_SENSOR)}): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-                ),
-                vol.Optional(CONF_P_PV_INVERT, default=current.get(CONF_P_PV_INVERT, False)): selector.BooleanSelector(),
-                # P_Akku
-                vol.Optional(CONF_P_AKKU_DUAL_MODE, default=current.get(CONF_P_AKKU_DUAL_MODE, False)): selector.BooleanSelector(),
-                vol.Optional(CONF_P_AKKU_SENSOR, description={"suggested_value": current.get(CONF_P_AKKU_SENSOR)}): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-                ),
-                vol.Optional(CONF_P_AKKU_SENSOR_POS, description={"suggested_value": current.get(CONF_P_AKKU_SENSOR_POS)}): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-                ),
-                vol.Optional(CONF_P_AKKU_SENSOR_NEG, description={"suggested_value": current.get(CONF_P_AKKU_SENSOR_NEG)}): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-                ),
-                vol.Optional(CONF_P_AKKU_INVERT, default=current.get(CONF_P_AKKU_INVERT, False)): selector.BooleanSelector(),
-                # P_Load
-                vol.Optional(CONF_P_LOAD_SENSOR, description={"suggested_value": current.get(CONF_P_LOAD_SENSOR)}): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-                ),
-                vol.Optional(CONF_P_LOAD_INVERT, default=current.get(CONF_P_LOAD_INVERT, False)): selector.BooleanSelector(),
-                # SOC
-                vol.Optional(CONF_SOC_SENSOR, description={"suggested_value": current.get(CONF_SOC_SENSOR)}): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=SENSOR_DOMAIN)
-                ),
-            }
-        )
-
-        return self.async_show_form(
-            step_id="init",
-            data_schema=schema,
+            }),
             errors=errors,
         )
+
+    async def async_step_grid(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        current = self._current()
+        if user_input is not None:
+            self._configure_per_phase = bool(user_input.pop("configure_per_phase", False))
+            self._data.update(user_input)
+            return await self.async_step_generation()
+        return self.async_show_form(
+            step_id="grid",
+            data_schema=_grid_schema(current),
+        )
+
+    async def async_step_generation(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        current = self._current()
+        if user_input is not None:
+            self._data.update(user_input)
+            if self._configure_per_phase:
+                return await self.async_step_advanced()
+            # User skipped the advanced step — carry over existing per-phase settings
+            for key in _PER_PHASE_KEYS:
+                if current.get(key) and key not in self._data:
+                    self._data[key] = current[key]
+            return self._save_options()
+        return self.async_show_form(
+            step_id="generation",
+            data_schema=_generation_schema(current),
+        )
+
+    async def async_step_advanced(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        current = self._current()
+        if user_input is not None:
+            self._data.update(user_input)
+            return self._save_options()
+        return self.async_show_form(
+            step_id="advanced",
+            data_schema=_advanced_schema(current),
+        )
+
+    def _save_options(self) -> config_entries.FlowResult:
+        data = {k: v for k, v in self._data.items() if v not in ("", None)}
+        return self.async_create_entry(title="", data=data)

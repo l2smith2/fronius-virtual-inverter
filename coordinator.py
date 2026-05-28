@@ -14,6 +14,15 @@ from .const import (
     CONF_I_GRID_PHASE_A,
     CONF_I_GRID_PHASE_B,
     CONF_I_GRID_PHASE_C,
+    CONF_V_GRID_PHASE_A,
+    CONF_V_GRID_PHASE_B,
+    CONF_V_GRID_PHASE_C,
+    CONF_POWER_FACTOR_PHASE_A,
+    CONF_POWER_FACTOR_PHASE_B,
+    CONF_POWER_FACTOR_PHASE_C,
+    CONF_Q_GRID_PHASE_A,
+    CONF_Q_GRID_PHASE_B,
+    CONF_Q_GRID_PHASE_C,
     CONF_P_AKKU_DUAL_MODE,
     CONF_P_AKKU_INVERT,
     CONF_P_AKKU_SENSOR,
@@ -34,6 +43,7 @@ from .const import (
     CONF_SOC_SENSOR,
     CONF_UPDATE_INTERVAL,
     DEFAULT_GRID_CT_RATING,
+    DEFAULT_GRID_VOLTAGE,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
 )
@@ -120,6 +130,16 @@ class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
         i_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_I_GRID_PHASE_B))
         i_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_I_GRID_PHASE_C))
 
+        v_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_V_GRID_PHASE_A)) or DEFAULT_GRID_VOLTAGE
+        v_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_V_GRID_PHASE_B)) or DEFAULT_GRID_VOLTAGE
+        v_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_V_GRID_PHASE_C)) or DEFAULT_GRID_VOLTAGE
+        pf_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_POWER_FACTOR_PHASE_A))
+        pf_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_POWER_FACTOR_PHASE_B))
+        pf_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_POWER_FACTOR_PHASE_C))
+        q_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_Q_GRID_PHASE_A))
+        q_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_Q_GRID_PHASE_B))
+        q_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_Q_GRID_PHASE_C))
+
         grid_phases = int(cfg.get(CONF_GRID_PHASES, "1"))
         ct_rating = float(cfg.get(CONF_GRID_CT_RATING, DEFAULT_GRID_CT_RATING))
 
@@ -157,6 +177,15 @@ class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
             "I_Grid_A": i_grid_a,
             "I_Grid_B": i_grid_b,
             "I_Grid_C": i_grid_c,
+            "V_Grid_A": v_grid_a,
+            "V_Grid_B": v_grid_b,
+            "V_Grid_C": v_grid_c,
+            "PF_Grid_A": pf_grid_a,
+            "PF_Grid_B": pf_grid_b,
+            "PF_Grid_C": pf_grid_c,
+            "Q_Grid_A": q_grid_a,
+            "Q_Grid_B": q_grid_b,
+            "Q_Grid_C": q_grid_c,
             "grid_phases": grid_phases,
             "grid_ct_rating": ct_rating,
         }
