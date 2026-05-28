@@ -18,32 +18,34 @@ Emulates a Fronius GEN24 inverter + Fronius Smart Meter IP on the local network 
    - SnapIN adds it as TCP meter at 192.168.2.153:502, unit ID 240
    - Data appears in SolarWeb
 
-## mDNS discovery — current status (IN PROGRESS)
+## mDNS discovery — WORKING ✓
+
 The Wattpilot scans for exactly two mDNS service types (confirmed by pcap):
 - `_Fronius-SE-Inverter._tcp.local.`
 - `_Fronius-SE-SmartMeter._tcp.local.`
 
 Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
-We implemented `RawMDNSAnnouncer` in `mdns_announcer.py` that sends raw UDP multicast.
+`RawMDNSAnnouncer` in `mdns_announcer.py` sends raw UDP multicast directly.
+
+**Key fixes that solved mDNS pairing:**
+1. **Bind to port 5353 with SO_REUSEPORT** — RFC 6762 requires mDNS responses to originate from UDP source port 5353. Wattpilot was silently discarding our responses because they came from ephemeral ports. SO_REUSEPORT allows sharing port 5353 with HA's zeroconf daemon.
+2. **IPv6 support with AAAA records** — Wattpilot queries from both IPv4 (192.168.2.225) and IPv6 link-local (fe80::c249:efff:fe1e:5188). Added second socket sending to `ff02::fb` with correct interface scope ID, and AAAA records in the additional section.
 
 **Confirmed facts about Wattpilot mDNS behaviour:**
-- Sends queries from **both** IPv4 (192.168.2.225) **and** IPv6 link-local (fe80::c249:efff:fe1e:5188) — responses must be sent to both `224.0.0.251` and `ff02::fb`
-- IPv6 multicast requires a scope ID: `ff02::fb%eth0` (interface index passed as 4-tuple scope_id in Python sendto)
-- Packet size must be kept under 400 bytes — earlier full DeviceMeta JSON grew packet to 730 bytes; now stripped to essential fields only
+- Sends queries from **both** IPv4 and IPv6 link-local — both must be answered
+- IPv6 multicast requires a scope ID: interface index passed as 4-tuple scope_id in Python sendto
+- Packet size must be kept under 400 bytes — full DeviceMeta JSON grew packets to 730 bytes; stripped to essential fields only
 - `cci` WebSocket property holds the paired inverter: `{ip, label, commonName, paired, reachableMdns, reachableUdp, reachableHttp}` — **read-only**, cannot be written via WebSocket
-- `commonName` format observed on SnapIN: `pilot-0.5e-1248152` — may need to match this pattern in TXT records
-- SnapIN (192.168.2.79) sends **zero** mDNS traffic once paired — goes completely silent after pairing; cannot observe it as a reference
+- SnapIN (192.168.2.79) sends **zero** mDNS traffic once paired — goes completely silent after pairing
 - SnapIN actively polls our virtual Smart Meter on port 502 every second ✓
 - SnapIN actively polls our HTTP Solar API on port 80 ✓
-- `ido` WebSocket property can push inverter data directly to Wattpilot but requires sudo/privileged auth (separate issue in the wattpilot HA integration)
+- `ido` WebSocket property can push inverter data directly to Wattpilot but requires sudo/privileged auth (separate issue)
 
-**Current problem:** Packets not appearing on wire despite no errors.
-- tcpdump on Proxmox vmbr0 shows Wattpilot querying but no response from 192.168.2.153
-- HA logs show announcer starting and sending from 192.168.2.153
-- Socket sendto() returns success but nothing in tcpdump
-- Proxmox vmbr0 multicast snooping = 0
-- tap100i0 is directly on vmbr0 (no fwbr firewall bridge)
-- IPv6 socket now added alongside IPv4 — sends to ff02::fb with correct interface scope ID
+**Result:** Wattpilot now discovers, pairs, and uses the virtual inverter for PV surplus (Eco) charging. ✓
+
+## Remaining known issues
+- **Load Balancing shows "not available"** — Wattpilot needs per-phase load data (L1/L2/L3 W) which the current API responses do not provide
+- **Device display name** — comes from `Systemname` field in `GetLoggerInfo` response; configurable in integration setup via the System Name option
 
 ## Network topology
 - HA host: 192.168.2.153 (Proxmox VM)
@@ -53,11 +55,12 @@ We implemented `RawMDNSAnnouncer` in `mdns_announcer.py` that sends raw UDP mult
 
 ## Key confirmed facts
 - Wattpilot does NOT subnet scan — purely mDNS PTR queries
-- Wattpilot already paired with SnapIN (Smith, serial 240.1248152)
-- Virtual Smart Meter successfully added to SnapIN and visible in SolarWeb
-- HTTP Solar API serving live data correctly on port 80
-- fronius-virtual.local resolves correctly via _http._tcp mDNS
-- Raw mDNS socket binds and reports sending but packets don't reach the wire
+- Wattpilot paired with SnapIN (Smith, serial 240.1248152) in normal use; can be unpaired for testing
+- Virtual Smart Meter successfully added to SnapIN and visible in SolarWeb ✓
+- HTTP Solar API serving live data correctly on port 80 ✓
+- fronius-virtual.local resolves correctly via _http._tcp mDNS ✓
+- Full PV surplus (Eco) charging via virtual inverter working ✓
+- Sensor unit auto-conversion (kW→W, kWh→Wh, MW→W, MWh→Wh) in sensor_reader.py ✓
 
 ## Sign conventions (Fronius)
 - P_Grid: positive = import, negative = export
