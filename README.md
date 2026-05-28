@@ -79,7 +79,7 @@ Setup is a guided multi-step flow:
 Map your electricity meter sensor, set phase count (single/three-phase), circuit breaker rating, and optionally enable the per-phase sensor steps for Wattpilot load balancing.
 
 **Step 3 — Solar & Battery**
-Map solar generation, battery charge/discharge, house load, and battery state of charge sensors. All fields are optional.
+Map solar generation, battery charge/discharge, house load, and battery state of charge sensors. All fields are optional. The **Battery State of Charge** field accepts any HA sensor reporting 0–100% — it does not need to come from a Fronius battery. Mapping a SOC sensor unlocks the battery threshold controls in the Solar.wattpilot app (Charges from, Discharges until, Discharges until (boost)).
 
 **Step 4 — Per-phase load balancing — Phase A** *(optional)*
 Phase A power, current, voltage, power factor, and reactive power sensors. Only shown if you enabled the per-phase toggle in Step 2.
@@ -153,6 +153,19 @@ You have a non-Fronius inverter (e.g. Growatt, SolarEdge, Enphase) and a separat
 - **P_PV** — your inverter's output power sensor
 - **P_Akku** — leave blank if no battery
 - **SOC** — leave blank if no battery
+
+### Battery SOC from third-party systems
+
+By mapping a battery SOC sensor from any third-party battery system (e.g. Tesla Powerwall,
+BYD, Pylontech via a compatible HA integration), the Wattpilot's **PV Battery** functions
+are unlocked:
+
+- **Charges from** — minimum SOC before Wattpilot starts using battery power for charging
+- **Discharges until** — SOC threshold below which the Wattpilot stops discharging battery
+- **Discharges until (boost)** — SOC threshold for boost mode
+
+This works with any battery that exposes a state of charge sensor in Home Assistant,
+regardless of brand or inverter manufacturer.
 
 ---
 
