@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import math
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -268,24 +267,21 @@ class FroniusSolarAPIServer:
         q_b = data.get("Q_Grid_B") or 0.0
         q_c = data.get("Q_Grid_C") or 0.0
 
-        def _derive_pf(p: float, i: float, v: float, sensor: float | None) -> float:
+        def _derive_pf(p: float, s: float, sensor: float | None) -> float:
             if sensor is not None:
                 return sensor
-            s = i * v
             return round(p / s, 3) if s > 0 else (1.0 if p >= 0 else -1.0)
 
-        def _apparent(p: float, q: float) -> float:
-            return math.sqrt(p * p + q * q) if q != 0.0 else abs(p)
-
-        pf_a = _derive_pf(p_a, i_a, v_a, pf_sensor_a)
-        pf_b = _derive_pf(p_b, i_b, v_b, pf_sensor_b)
-        pf_c = _derive_pf(p_c, i_c, v_c, pf_sensor_c)
-        s_a = _apparent(p_a, q_a)
-        s_b = _apparent(p_b, q_b)
-        s_c = _apparent(p_c, q_c)
+        # Apparent power via I*V — matches real meter measurement; credible when P=0 but I/Q non-zero
+        s_a = i_a * v_a
+        s_b = i_b * v_b
+        s_c = i_c * v_c
+        s_sum = s_a if phases == 1 else s_a + s_b + s_c
         q_sum = q_a + q_b + q_c
-        s_sum = _apparent(p_grid, q_sum)
-        pf_sum = round(p_grid / s_sum, 3) if s_sum > 0 else (1.0 if p_grid >= 0 else -1.0)
+        pf_a = _derive_pf(p_a, s_a, pf_sensor_a)
+        pf_b = _derive_pf(p_b, s_b, pf_sensor_b)
+        pf_c = _derive_pf(p_c, s_c, pf_sensor_c)
+        pf_sum = _derive_pf(p_grid, s_sum, None)
 
         timestamp = int(datetime.now(timezone.utc).timestamp())
 
@@ -316,6 +312,8 @@ class FroniusSolarAPIServer:
             "EnergyReal_WAC_Plus_Absolute": round(tot_wh_imp, 1),
             "EnergyReal_WAC_Sum_Consumed": round(tot_wh_imp, 1),
             "EnergyReal_WAC_Sum_Produced": round(tot_wh_exp, 1),
+            "EnergyReactive_VArAC_Sum_Consumed": 0.0,
+            "EnergyReactive_VArAC_Sum_Produced": 0.0,
             # Phase 1 (always present)
             "Current_AC_Phase_1": round(i_a, 2),
             "PowerReal_P_Phase_1": round(p_a, 1),
@@ -324,6 +322,8 @@ class FroniusSolarAPIServer:
             "PowerFactor_Phase_1": pf_a,
             "EnergyReal_WAC_Phase_1_Consumed": round(tot_wh_imp, 1),
             "EnergyReal_WAC_Phase_1_Produced": round(tot_wh_exp, 1),
+            "EnergyReactive_VArAC_Phase_1_Consumed": 0.0,
+            "EnergyReactive_VArAC_Phase_1_Produced": 0.0,
         }
 
         if v_a_raw is not None:
