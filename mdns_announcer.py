@@ -243,36 +243,35 @@ class RawMDNSAnnouncer:
             )
 
         # ── IPv4 socket ───────────────────────────────────────────────────
-        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         self._sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
-        self._sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
         self._sock.setsockopt(
             socket.IPPROTO_IP,
             socket.IP_MULTICAST_IF,
             socket.inet_aton(local_ip),
         )
-        self._sock.bind((local_ip, 0))
-        port4 = self._sock.getsockname()[1]
+        self._sock.bind((local_ip, MDNS_PORT))
 
         # ── IPv6 socket ───────────────────────────────────────────────────
         try:
             self._sock6 = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+            self._sock6.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self._sock6.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             self._sock6.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 255)
-            self._sock6.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_LOOP, 1)
-            self._sock6.bind(("::", 0))
-            port6 = self._sock6.getsockname()[1]
+            self._sock6.bind(("::", MDNS_PORT))
             _LOGGER.warning(
-                "RawMDNSAnnouncer IPv6 bound on [::]:%d, iface=%s", port6, self._iface
+                "RawMDNSAnnouncer IPv6 bound on [::]:5353, iface=%s", self._iface
             )
         except Exception as err:
             _LOGGER.warning("RawMDNSAnnouncer IPv6 socket failed (non-fatal): %s", err)
             self._sock6 = None
-            port6 = None
 
         self._task = asyncio.create_task(self._announce_loop())
         _LOGGER.warning(
-            "RawMDNSAnnouncer IPv4 bound to %s:%d, iface=%s, sending to 224.0.0.251:5353",
-            local_ip, port4, self._iface,
+            "RawMDNSAnnouncer IPv4 bound to %s:5353, iface=%s, sending to 224.0.0.251:5353",
+            local_ip, self._iface,
         )
         _LOGGER.info(
             "Raw mDNS: announcing '%s' at %s:%d for %s and %s",
