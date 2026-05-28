@@ -229,6 +229,8 @@ class FroniusSolarAPIServer:
         data = self._coordinator.data
         p_grid = data.get("P_Grid", 0.0) or 0.0
         phases = int(data.get("grid_phases", 1))
+        tot_wh_imp = data.get("_tot_wh_imp", 0.0)
+        tot_wh_exp = data.get("_tot_wh_exp", 0.0)
 
         p_a = data.get("P_Grid_A")
         p_b = data.get("P_Grid_B")
@@ -237,7 +239,6 @@ class FroniusSolarAPIServer:
         i_b = data.get("I_Grid_B")
         i_c = data.get("I_Grid_C")
 
-        # Derive per-phase power if not provided by sensors
         if p_a is None and p_b is None and p_c is None:
             if phases == 3:
                 p_a = p_b = p_c = p_grid / 3.0
@@ -248,10 +249,12 @@ class FroniusSolarAPIServer:
             p_b = p_b or 0.0
             p_c = p_c or 0.0
 
-        # Derive current from power at 230 V if current sensors not provided
-        i_a = i_a if i_a is not None else p_a / 230.0
-        i_b = i_b if i_b is not None else p_b / 230.0
-        i_c = i_c if i_c is not None else p_c / 230.0
+        i_a = i_a if i_a is not None else p_a / 240.0
+        i_b = i_b if i_b is not None else p_b / 240.0
+        i_c = i_c if i_c is not None else p_c / 240.0
+
+        pf = 1.0 if p_grid >= 0 else -1.0
+        timestamp = int(datetime.now(timezone.utc).timestamp())
 
         meter_data: dict = {
             "Details": {
@@ -260,22 +263,44 @@ class FroniusSolarAPIServer:
                 "Serial": self._serial,
             },
             "Enable": 1,
-            "PowerReal_P_Sum": round(p_grid, 1),
-            "PowerReal_P_Phase_1": round(p_a, 1),
-            "PowerReal_P_Phase_2": round(p_b, 1),
-            "PowerReal_P_Phase_3": round(p_c, 1),
-            "Current_AC_Phase_1": round(i_a, 2),
-            "Current_AC_Phase_2": round(i_b, 2),
-            "Current_AC_Phase_3": round(i_c, 2),
+            "TimeStamp": timestamp,
             "Meter_Location_Current": 0,
             "Visible": 1,
+            "Frequency_Phase_Average": 50.0,
+            "PowerReal_P_Sum": round(p_grid, 1),
+            "PowerApparent_S_Sum": round(abs(p_grid), 1),
+            "PowerFactor_Sum": pf,
+            "Current_AC_Sum": round(i_a if phases == 1 else i_a + i_b + i_c, 2),
+            "EnergyReal_WAC_Minus_Absolute": round(tot_wh_exp, 1),
+            "EnergyReal_WAC_Plus_Absolute": round(tot_wh_imp, 1),
+            "EnergyReal_WAC_Sum_Consumed": round(tot_wh_imp, 1),
+            "EnergyReal_WAC_Sum_Produced": round(tot_wh_exp, 1),
+            # Phase 1 (always present)
+            "Voltage_AC_Phase_1": 240.0,
+            "Current_AC_Phase_1": round(i_a, 2),
+            "PowerReal_P_Phase_1": round(p_a, 1),
+            "PowerApparent_S_Phase_1": round(abs(p_a), 1),
+            "PowerFactor_Phase_1": pf,
+            "EnergyReal_WAC_Phase_1_Consumed": round(tot_wh_imp, 1),
+            "EnergyReal_WAC_Phase_1_Produced": round(tot_wh_exp, 1),
         }
 
+        if phases == 3:
+            meter_data.update({
+                "Voltage_AC_Phase_2": 240.0,
+                "Voltage_AC_Phase_3": 240.0,
+                "Current_AC_Phase_2": round(i_b, 2),
+                "Current_AC_Phase_3": round(i_c, 2),
+                "PowerReal_P_Phase_2": round(p_b, 1),
+                "PowerReal_P_Phase_3": round(p_c, 1),
+                "PowerApparent_S_Phase_2": round(abs(p_b), 1),
+                "PowerApparent_S_Phase_3": round(abs(p_c), 1),
+                "PowerFactor_Phase_2": pf,
+                "PowerFactor_Phase_3": pf,
+            })
+
         scope = request.rel_url.query.get("Scope", "System")
-        if scope == "Device":
-            body_data: dict = {"0": meter_data}
-        else:
-            body_data = {"0": meter_data}
+        body_data: dict = {"0": meter_data}
 
         payload = {
             "Body": {"Data": body_data},
