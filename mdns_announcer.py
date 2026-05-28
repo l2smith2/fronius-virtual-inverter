@@ -191,6 +191,7 @@ class RawMDNSAnnouncer:
                 "DeviceMeta": {
                     "Device-Information": {
                         "Systemname": self._system_name,
+                        "CommonName": f"pilot-0.5e-{self._system_name}",
                         "DeviceSerialNumber": self._serial,
                         "Manufacturer": "Fronius",
                         "SoftwareBundleVersion": "3.4.0-102",
