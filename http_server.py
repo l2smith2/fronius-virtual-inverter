@@ -67,6 +67,7 @@ class FroniusSolarAPIServer:
         self._app.router.add_get(API_INVERTER_INFO, self._handle_inverter_info)
         self._app.router.add_get(API_INVERTER_REALTIME, self._handle_inverter_realtime)
         self._app.router.add_get(API_METER_REALTIME, self._handle_meter_realtime)
+        self._app.router.add_get("/solar_api/v1/GetMeterRealtimeData.cgi", self._handle_meter_realtime)
         self._app.router.add_get(API_STORAGE_REALTIME, self._handle_storage_realtime)
         self._app.router.add_get(API_LOGGER_INFO, self._handle_logger_info)
         # Catch-all for any other Solar API paths
@@ -252,28 +253,32 @@ class FroniusSolarAPIServer:
         i_b = i_b if i_b is not None else p_b / 230.0
         i_c = i_c if i_c is not None else p_c / 230.0
 
-        payload = {
-            "Body": {
-                "Data": {
-                    "0": {
-                        "Details": {
-                            "Manufacturer": "Fronius",
-                            "Model": "Smart Meter TS 65A-3",
-                            "Serial": self._serial,
-                        },
-                        "Enable": 1,
-                        "PowerReal_P_Sum": round(p_grid, 1),
-                        "PowerReal_P_Phase_1": round(p_a, 1),
-                        "PowerReal_P_Phase_2": round(p_b, 1),
-                        "PowerReal_P_Phase_3": round(p_c, 1),
-                        "Current_AC_Phase_1": round(i_a, 2),
-                        "Current_AC_Phase_2": round(i_b, 2),
-                        "Current_AC_Phase_3": round(i_c, 2),
-                        "Meter_Location_Current": 0,
-                        "Visible": 1,
-                    }
-                }
+        meter_data: dict = {
+            "Details": {
+                "Manufacturer": "Fronius",
+                "Model": "Smart Meter TS 65A-3",
+                "Serial": self._serial,
             },
+            "Enable": 1,
+            "PowerReal_P_Sum": round(p_grid, 1),
+            "PowerReal_P_Phase_1": round(p_a, 1),
+            "PowerReal_P_Phase_2": round(p_b, 1),
+            "PowerReal_P_Phase_3": round(p_c, 1),
+            "Current_AC_Phase_1": round(i_a, 2),
+            "Current_AC_Phase_2": round(i_b, 2),
+            "Current_AC_Phase_3": round(i_c, 2),
+            "Meter_Location_Current": 0,
+            "Visible": 1,
+        }
+
+        scope = request.rel_url.query.get("Scope", "System")
+        if scope == "Device":
+            body_data: dict = {"0": meter_data}
+        else:
+            body_data = {"0": meter_data}
+
+        payload = {
+            "Body": {"Data": body_data},
             "Head": _make_head(),
         }
         return self._json_response(payload)
