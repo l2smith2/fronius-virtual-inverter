@@ -43,7 +43,6 @@ from .const import (
     CONF_SOC_SENSOR,
     CONF_UPDATE_INTERVAL,
     DEFAULT_GRID_CT_RATING,
-    DEFAULT_GRID_VOLTAGE,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
 )
@@ -119,20 +118,16 @@ class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
 
         # Per-phase grid power and current
         p_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_P_GRID_PHASE_A))
-        _LOGGER.warning(
-            "Phase config: phases=%s, phase_a_sensor=%s",
-            cfg.get(CONF_GRID_PHASES), cfg.get(CONF_P_GRID_PHASE_A),
-        )
-        _LOGGER.warning("Phase A value: %s", p_grid_a)
         p_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_P_GRID_PHASE_B))
         p_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_P_GRID_PHASE_C))
         i_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_I_GRID_PHASE_A))
         i_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_I_GRID_PHASE_B))
         i_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_I_GRID_PHASE_C))
 
-        v_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_V_GRID_PHASE_A)) or DEFAULT_GRID_VOLTAGE
-        v_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_V_GRID_PHASE_B)) or DEFAULT_GRID_VOLTAGE
-        v_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_V_GRID_PHASE_C)) or DEFAULT_GRID_VOLTAGE
+        # Store None when no sensor configured — http_server defaults to 240V for derivation
+        v_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_V_GRID_PHASE_A))
+        v_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_V_GRID_PHASE_B))
+        v_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_V_GRID_PHASE_C))
         pf_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_POWER_FACTOR_PHASE_A))
         pf_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_POWER_FACTOR_PHASE_B))
         pf_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_POWER_FACTOR_PHASE_C))

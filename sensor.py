@@ -284,6 +284,12 @@ class FroniusVirtualSensor(CoordinatorEntity, SensorEntity):
         }
 
     @property
+    def available(self) -> bool:
+        if self.coordinator.data is None:
+            return False
+        return self.coordinator.data.get(self.entity_description.data_key) is not None
+
+    @property
     def native_value(self) -> float | None:
         if self.coordinator.data is None:
             return None

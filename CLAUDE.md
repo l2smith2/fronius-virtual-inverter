@@ -56,9 +56,33 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 - `grid_ct_rating`: circuit breaker amps, default 32A — reported as `MaxACCurrent` in GetInverterInfo
 - Optional per-phase power sensors: `p_grid_phase_a/b/c` (W)
 - Optional per-phase current sensors: `i_grid_phase_a/b/c` (A) — alternative to power
+- Optional per-phase voltage sensors: `v_grid_phase_a/b/c` (V) — defaults to 240V if not set
+- Optional per-phase power factor sensors: `power_factor_phase_a/b/c` — derived from P/(I×V) if not set
+- Optional per-phase reactive power sensors: `q_grid_phase_a/b/c` (VAr) — defaults to 0 if not set
 - If per-phase sensors not configured: auto-splits total P_Grid equally across phases (or all on phase 1 for single-phase)
-- If current sensors not provided: derives from P/230V
+- If current sensors not provided: derives from P/V (240V default)
 - CT rating and per-phase current can also be configured directly in the Solar.wattpilot app
+
+**Load balancing stability note:**
+- Current sensor alone causes inconsistency at near-zero real power (high I, low P → PF≈-0.02)
+- Solution: configure Power Factor and Reactive Power Phase sensors from Fronius Smart Meter integration
+- These are available from the real SnapIN integration entities (see Fronius Smart Meter sensors below)
+
+**Fronius Smart Meter sensors available (from real SnapIN integration):**
+- `sensor.fronius_current_phase_1` (A)
+- `sensor.fronius_power_factor_phase_1`
+- `sensor.fronius_reactive_power_phase_1` (VAr)
+- `sensor.fronius_voltage_phase_1` (V)
+- `sensor.fronius_real_power` (W)
+- `sensor.fronius_frequency_phase_average` (Hz)
+
+## GetMeterRealtimeData response format
+- `.cgi` (Device scope, Wattpilot polls this) and `.fcgi` (System scope) both handled
+- Response matches real Fronius SnapIN format: `TimeStamp`, `Frequency_Phase_Average`, `Voltage_AC_Phase_1/2/3`, `PowerApparent_S_*`, `PowerFactor_*`, `PowerReactive_Q_*`, `EnergyReal_WAC_*`
+- `PowerApparent_S = sqrt(P² + Q²)` when Q≠0, else `abs(P)`
+- `PowerFactor`: from sensor → derived from P/(I×V) → sign-based fallback (1.0 import, -1.0 export)
+- Energy accumulators (`EnergyReal_WAC_*`) tracked in coordinator as running totals
+- For single-phase: only Phase_1 fields included; for three-phase: Phase_1/2/3 all included
 
 ## Confirmed working ✓
 - Wattpilot discovery and pairing via mDNS ✓
@@ -70,6 +94,9 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 - Sensor unit auto-conversion: kW→W, kWh→Wh, MW→W, MWh→Wh ✓
 - Per-phase data in GetMeterRealtimeData for load balancing ✓
 - system_name used as serial for human-readable display name ✓
+- GetMeterRealtimeData.cgi (Device scope) served correctly — what Wattpilot polls ✓
+- Per-phase voltage, power factor, reactive power sensors supported ✓
+- Config flow restructured into 4 steps: user → grid → generation → advanced ✓
 
 ## Network topology
 - HA host: 192.168.2.153 (Proxmox VM)

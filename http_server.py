@@ -239,9 +239,13 @@ class FroniusSolarAPIServer:
         i_a = data.get("I_Grid_A")
         i_b = data.get("I_Grid_B")
         i_c = data.get("I_Grid_C")
-        v_a: float = data.get("V_Grid_A", 240.0)
-        v_b: float = data.get("V_Grid_B", 240.0)
-        v_c: float = data.get("V_Grid_C", 240.0)
+        # None means no voltage sensor configured; use 240V only for current derivation
+        v_a_raw: float | None = data.get("V_Grid_A")
+        v_b_raw: float | None = data.get("V_Grid_B")
+        v_c_raw: float | None = data.get("V_Grid_C")
+        v_a: float = v_a_raw or 240.0
+        v_b: float = v_b_raw or 240.0
+        v_c: float = v_c_raw or 240.0
 
         if p_a is None and p_b is None and p_c is None:
             if phases == 3:
@@ -285,6 +289,13 @@ class FroniusSolarAPIServer:
 
         timestamp = int(datetime.now(timezone.utc).timestamp())
 
+        _LOGGER.warning(
+            "MeterRealtime phase_1: P=%.1f I=%.3f V=%s PF=%s Q=%.1f",
+            p_a, i_a,
+            round(v_a_raw, 1) if v_a_raw is not None else "default(240)",
+            pf_a, q_a,
+        )
+
         meter_data: dict = {
             "Details": {
                 "Manufacturer": "Fronius",
@@ -306,7 +317,6 @@ class FroniusSolarAPIServer:
             "EnergyReal_WAC_Sum_Consumed": round(tot_wh_imp, 1),
             "EnergyReal_WAC_Sum_Produced": round(tot_wh_exp, 1),
             # Phase 1 (always present)
-            "Voltage_AC_Phase_1": round(v_a, 1),
             "Current_AC_Phase_1": round(i_a, 2),
             "PowerReal_P_Phase_1": round(p_a, 1),
             "PowerReactive_Q_Phase_1": round(q_a, 1),
@@ -316,10 +326,11 @@ class FroniusSolarAPIServer:
             "EnergyReal_WAC_Phase_1_Produced": round(tot_wh_exp, 1),
         }
 
+        if v_a_raw is not None:
+            meter_data["Voltage_AC_Phase_1"] = round(v_a_raw, 1)
+
         if phases == 3:
             meter_data.update({
-                "Voltage_AC_Phase_2": round(v_b, 1),
-                "Voltage_AC_Phase_3": round(v_c, 1),
                 "Current_AC_Phase_2": round(i_b, 2),
                 "Current_AC_Phase_3": round(i_c, 2),
                 "PowerReal_P_Phase_2": round(p_b, 1),
@@ -331,6 +342,10 @@ class FroniusSolarAPIServer:
                 "PowerFactor_Phase_2": pf_b,
                 "PowerFactor_Phase_3": pf_c,
             })
+            if v_b_raw is not None:
+                meter_data["Voltage_AC_Phase_2"] = round(v_b_raw, 1)
+            if v_c_raw is not None:
+                meter_data["Voltage_AC_Phase_3"] = round(v_c_raw, 1)
 
         scope = request.rel_url.query.get("Scope", "System")
         body_data: dict = {"0": meter_data}
