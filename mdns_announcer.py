@@ -166,10 +166,11 @@ class RawMDNSAnnouncer:
     daemon on port 5353.  Send-only: no receive/query-response support.
     """
 
-    def __init__(self, name: str, port: int, serial: str) -> None:
+    def __init__(self, name: str, port: int, serial: str, system_name: str | None = None) -> None:
         self._name = name
         self._port = port
         self._serial = serial
+        self._system_name = system_name or name
         self._sock: socket.socket | None = None
         self._sock6: socket.socket | None = None
         self._iface: str = "eth0"
@@ -189,7 +190,7 @@ class RawMDNSAnnouncer:
             {
                 "DeviceMeta": {
                     "Device-Information": {
-                        "Systemname": self._name,
+                        "Systemname": self._system_name,
                         "DeviceSerialNumber": self._serial,
                         "Manufacturer": "Fronius",
                         "SoftwareBundleVersion": "3.4.0-102",

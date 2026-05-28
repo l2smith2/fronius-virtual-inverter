@@ -92,7 +92,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         mdns = None
 
     # ── Raw mDNS announcer (Fronius-SE service types via UDP multicast) ────
-    raw_mdns = RawMDNSAnnouncer(name=name, port=port, serial=serial)
+    raw_mdns = RawMDNSAnnouncer(name=name, port=port, serial=serial, system_name=system_name)
     try:
         await raw_mdns.async_start()
     except Exception as err:
