@@ -62,3 +62,15 @@ API_METER_REALTIME = f"{API_BASE}/GetMeterRealtimeData.fcgi"
 API_STORAGE_REALTIME = f"{API_BASE}/GetStorageRealtimeData.fcgi"
 API_LOGGER_INFO = f"{API_BASE}/GetLoggerInfo.fcgi"
 API_VERSION = "/solar_api/GetAPIVersion.cgi"
+API_ACTIVE_DEVICE_INFO = "/solar_api/v1/GetActiveDeviceInfo.cgi"
+
+# Grid phase / load balancing
+CONF_GRID_PHASES = "grid_phases"
+CONF_P_GRID_PHASE_A = "p_grid_phase_a"
+CONF_P_GRID_PHASE_B = "p_grid_phase_b"
+CONF_P_GRID_PHASE_C = "p_grid_phase_c"
+CONF_I_GRID_PHASE_A = "i_grid_phase_a"
+CONF_I_GRID_PHASE_B = "i_grid_phase_b"
+CONF_I_GRID_PHASE_C = "i_grid_phase_c"
+CONF_GRID_CT_RATING = "grid_ct_rating"
+DEFAULT_GRID_CT_RATING = 32

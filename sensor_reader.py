@@ -9,17 +9,25 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _get_sensor_value(hass: HomeAssistant, entity_id: str | None) -> float | None:
-    """Get the numeric state of a sensor entity."""
+    """Get the numeric state of a sensor entity, converting kW/MW/kWh/MWh to W/Wh."""
     if not entity_id:
         return None
     state = hass.states.get(entity_id)
     if state is None or state.state in ("unavailable", "unknown", ""):
         return None
     try:
-        return float(state.state)
+        value = float(state.state)
     except (ValueError, TypeError):
         _LOGGER.warning("Cannot convert state '%s' to float for entity %s", state.state, entity_id)
         return None
+
+    unit = state.attributes.get("unit_of_measurement", "")
+    if unit in ("kW", "kWh"):
+        value *= 1000
+    elif unit in ("MW", "MWh"):
+        value *= 1_000_000
+
+    return value
 
 
 def read_power_value(

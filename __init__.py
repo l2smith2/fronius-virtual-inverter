@@ -44,8 +44,10 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 
-def _make_serial(entry_id: str) -> str:
-    """Generate a stable 8-character serial number from the entry ID."""
+def _make_serial(entry_id: str, system_name: str | None = None) -> str:
+    """Return system_name as the serial when provided, else a stable 8-char hex hash."""
+    if system_name:
+        return system_name
     return hashlib.md5(entry_id.encode()).hexdigest()[:8].upper()
 
 
@@ -58,8 +60,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     name = config.get(CONF_NAME, entry.title)
     port = int(config.get(CONF_PORT, DEFAULT_PORT))
-    serial = _make_serial(entry.entry_id)
     system_name = config.get(CONF_SYSTEM_NAME) or name
+    serial = _make_serial(entry.entry_id, system_name)
 
     modbus_enabled = bool(config.get(CONF_MODBUS_ENABLED, False))
     modbus_port = int(config.get(CONF_MODBUS_PORT, DEFAULT_MODBUS_PORT))
@@ -84,7 +86,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ) from err
 
     # ── mDNS announcer (_http._tcp.local. via zeroconf) ───────────────────
-    mdns = FroniusMDNSAnnouncer(name=name, port=port)
+    mdns = FroniusMDNSAnnouncer(name=name, port=port, system_name=system_name)
     try:
         await mdns.async_start(hass)
     except Exception as err:
@@ -92,7 +94,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         mdns = None
 
     # ── Raw mDNS announcer (Fronius-SE service types via UDP multicast) ────
-    raw_mdns = RawMDNSAnnouncer(name=name, port=port, serial=serial)
+    raw_mdns = RawMDNSAnnouncer(name=name, port=port, serial=serial, system_name=system_name)
     try:
         await raw_mdns.async_start()
     except Exception as err:
