@@ -228,14 +228,14 @@ class RawMDNSAnnouncer:
                 )
                 for svc in (FRONIUS_SE_INVERTER_TYPE, FRONIUS_SE_METER_TYPE)
             ]
-            _LOGGER.warning(
+            _LOGGER.info(
                 "RawMDNSAnnouncer: link-local IPv6 = %s (iface=%s)",
                 socket.inet_ntop(socket.AF_INET6, ip6_bytes),
                 self._iface,
             )
         else:
             self._packets6 = self._packets  # fallback: send IPv4 packets on IPv6 socket
-            _LOGGER.warning(
+            _LOGGER.info(
                 "RawMDNSAnnouncer: no link-local IPv6 found for iface=%s, AAAA fallback to A",
                 self._iface,
             )
@@ -259,7 +259,7 @@ class RawMDNSAnnouncer:
             self._sock6.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             self._sock6.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 255)
             self._sock6.bind(("::", MDNS_PORT))
-            _LOGGER.warning(
+            _LOGGER.info(
                 "RawMDNSAnnouncer IPv6 bound on [::]:5353, iface=%s", self._iface
             )
         except Exception as err:
@@ -267,7 +267,7 @@ class RawMDNSAnnouncer:
             self._sock6 = None
 
         self._task = asyncio.create_task(self._announce_loop())
-        _LOGGER.warning(
+        _LOGGER.info(
             "RawMDNSAnnouncer IPv4 bound to %s:5353, iface=%s, sending to 224.0.0.251:5353",
             local_ip, self._iface,
         )

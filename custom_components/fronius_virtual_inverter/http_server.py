@@ -285,13 +285,6 @@ class FroniusSolarAPIServer:
 
         timestamp = int(datetime.now(timezone.utc).timestamp())
 
-        _LOGGER.warning(
-            "MeterRealtime phase_1: P=%.1f I=%.3f V=%s PF=%s Q=%.1f",
-            p_a, i_a,
-            round(v_a_raw, 1) if v_a_raw is not None else "default(240)",
-            pf_a, q_a,
-        )
-
         meter_data: dict = {
             "Details": {
                 "Manufacturer": "Fronius",
