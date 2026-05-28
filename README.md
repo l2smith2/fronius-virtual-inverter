@@ -1,43 +1,96 @@
 # Fronius Virtual Inverter
 
-A Home Assistant custom integration that impersonates a **Fronius GEN24 hybrid inverter** on your local network, allowing a **Fronius Wattpilot EV charger** to pair with it and use PV surplus (Eco) charging — without needing real Fronius hardware.
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 
-## Why this exists
+A Home Assistant custom integration that emulates a Fronius inverter and Smart Meter IP, enabling Fronius Wattpilot PV surplus charging without real Fronius hardware.
 
-The Wattpilot's Eco charging mode requires a paired Fronius inverter or Smart Meter IP. Without one, it shows error 109 and won't do surplus charging. This integration serves the Fronius Solar API v1 over HTTP from your HA machine and announces itself via mDNS so the Wattpilot discovers and pairs with it automatically.
+---
+
+## ⚠️ Vibe Coded
+
+This integration was entirely designed and built using AI-assisted development (Claude by Anthropic).
+It has been tested on real hardware but may contain bugs. Use at your own risk.
+Pull requests and issues welcome.
+
+---
+
+## What it does
+
+The Wattpilot's Eco (PV surplus) charging mode requires a paired Fronius inverter or Smart Meter IP. Without one it shows error 109 and won't do surplus charging. This integration solves that by:
+
+- **Emulating a Fronius GEN24 inverter** over HTTP (Fronius Solar API v1), so the Wattpilot can pair and receive live power flow data
+- **Announcing itself via mDNS** so the Wattpilot discovers it automatically on the local network
+- **Optionally emulating a Fronius Smart Meter IP** over Modbus TCP, useful if you have a real Fronius SnapIN inverter that needs a grid meter
+- **Reading live data from your existing HA sensors** — grid power, solar generation, battery, house load, and per-phase values for load balancing
+
+---
+
+## Features
+
+- Wattpilot discovery and pairing via raw mDNS multicast (IPv4 + IPv6)
+- Fronius Solar API v1 HTTP server with all endpoints the Wattpilot polls
+- Per-phase load balancing data (`GetMeterRealtimeData`) for accurate phase-aware charging
+- Optional Modbus TCP Smart Meter IP emulation (SunSpec float model 213, unit ID 240)
+- Flexible sensor mapping: signed sensors, separate import/export sensors, sign invert
+- Automatic unit conversion: kW→W, kWh→Wh, MW→W, MWh→Wh
+- Diagnostic HA sensors showing exactly what is being served to the Wattpilot
+- Unconfigured sensors hidden automatically (not shown as unavailable)
+- Human-readable display name shown in the Wattpilot pairing screen
+
+---
+
+## Compatibility
+
+- Tested with **Wattpilot V2**, firmware **42.5**
+- Requires **Home Assistant 2026.3+**
+- Works with any inverter or energy meter that has HA sensors
+
+---
 
 ## Installation
 
 ### HACS (recommended)
-1. Add this repo as a custom repository in HACS
-2. Install "Fronius Virtual Inverter"
-3. Restart Home Assistant
+
+1. In HACS, go to **Integrations → ⋮ → Custom repositories**
+2. Add `https://github.com/l2smith2/fronius-virtual-inverter` as an **Integration**
+3. Search for "Fronius Virtual Inverter" and install
+4. Restart Home Assistant
 
 ### Manual
+
 1. Copy the `custom_components/fronius_virtual_inverter` folder to `/config/custom_components/`
 2. Restart Home Assistant
 
-Then go to **Settings → Devices & Services → Add Integration** and search for "Fronius Virtual Inverter".
+Then go to **Settings → Devices & Services → Add Integration** and search for **Fronius Virtual Inverter**.
 
-## Setup
+---
 
-The integration walks you through four steps:
+## Configuration
+
+Setup is a guided multi-step flow:
 
 **Step 1 — Basic settings**
-- **Inverter Name**: Used as the mDNS hostname (e.g. `my-inverter` → `my-inverter.local`). Lowercase letters and hyphens only.
-- **System Display Name**: Shown in the Wattpilot pairing screen (e.g. `MyHome`). Falls back to inverter name if blank.
-- **Port**: HTTP port for the Solar API server (default: `80`). Use a port above 1024 if HA lacks permission to bind port 80.
-- **Update Interval**: How often to refresh sensor values (default: 10 seconds).
-- **Enable Smart Meter IP (Modbus TCP)**: Also emulates a Fronius Smart Meter IP over Modbus TCP (default port 502, use 5020 if permission is an issue). Useful if you have a real SnapIN inverter on the same network.
+- **Inverter Name** — mDNS hostname (e.g. `my-inverter` → `my-inverter.local`). Lowercase letters and hyphens only.
+- **System Display Name** — shown in the Wattpilot pairing screen (e.g. `MyHome`). Falls back to inverter name if blank.
+- **Port** — HTTP port for the Solar API server (default: `80`). Use a port above 1024 if HA lacks permission to bind 80.
+- **Update Interval** — how often to refresh sensor values (default: 10 seconds).
 
 **Step 2 — Grid settings**
-Map your electricity meter sensor and configure phase settings. Enable the per-phase toggle if your meter provides per-phase data.
+Map your electricity meter sensor, set phase count (single/three-phase), circuit breaker rating, and optionally enable the per-phase sensor steps for Wattpilot load balancing.
 
 **Step 3 — Solar & Battery**
-Map solar generation, battery, and house load sensors. All fields are optional.
+Map solar generation, battery charge/discharge, house load, and battery state of charge sensors. All fields are optional.
 
-**Step 4 — Per-phase load balancing (optional)**
-Advanced sensors for Wattpilot load balancing accuracy. Only shown if you enabled the toggle in Step 2.
+**Step 4 — Per-phase load balancing — Phase A** *(optional)*
+Phase A power, current, voltage, power factor, and reactive power sensors. Only shown if you enabled the per-phase toggle in Step 2.
+
+**Step 5 — Per-phase load balancing — Phases B & C** *(optional, three-phase only)*
+Phase B and C sensors. Only shown if three-phase is selected.
+
+**Step 6 — Advanced options**
+Enable Modbus TCP Smart Meter IP emulation and set the Modbus port (default: 502).
+
+All steps are available again under **Settings → Devices & Services → Configure**.
 
 ### Sensor sign conventions
 
@@ -51,54 +104,61 @@ Advanced sensors for Wattpilot load balancing accuracy. Only shown if you enable
 
 ### Dual sensor mode
 
-If your integration provides separate import and export sensors (e.g. a Shelly 3EM gives `sensor.shelly_active_power_import` and `sensor.shelly_active_power_export` as two positive values), enable **Use Separate Import/Export Sensors** and select both. The integration computes:
-
-```
-value = import_sensor - export_sensor
-```
+If your meter provides separate import and export sensors (e.g. a Shelly 3EM gives two positive values), enable **Use Separate Import/Export Sensors** and select both. The integration computes `import − export` internally.
 
 ### Sign invert
 
 If your sensor reports a signed value with the opposite sign to Fronius convention, enable **Invert Sign**.
 
+---
+
 ## Pairing the Wattpilot
 
 1. With the integration running, open the **Solar.wattpilot** app
-2. Go to inverter/charging settings
+2. Go to inverter / charging settings
 3. Tap **"Scan for new inverters"**
 4. Your virtual inverter should appear (e.g. `MyHome (192.168.1.x)`)
 5. Select it and pair
 
-After pairing, the Wattpilot polls your HA machine for live surplus data and adjusts charging accordingly.
+After pairing the Wattpilot polls your HA machine for live surplus data and adjusts charging accordingly.
+
+---
 
 ## Use cases
 
-### Site A: Fronius inverter with battery storage
+### Site with an existing Fronius SnapIN inverter
 
-You have an existing Fronius SnapIN inverter already integrated in HA, plus a third-party battery. Map the sensors from the Fronius integration directly:
+You already have a Fronius inverter integrated in HA via the Fronius integration, plus a third-party battery. The Wattpilot needs to see battery SOC and per-phase load data that the SnapIN can't provide directly.
 
-- **P_Grid**: `sensor.fronius_power_grid` (already signed correctly)
-- **P_PV**: `sensor.fronius_power_photovoltaics`
-- **P_Akku**: Use dual sensor mode with your battery's charge/discharge sensors
-- **SOC**: Your battery's state of charge sensor
+Map sensors from the Fronius HA integration:
+
+- **P_Grid** — `sensor.fronius_power_grid` (already signed correctly)
+- **P_PV** — `sensor.fronius_power_photovoltaics`
+- **P_Akku** — use dual sensor mode with your battery's charge/discharge sensors
+- **SOC** — your battery's state of charge sensor
 
 For load balancing, map the per-phase sensors from your Fronius Smart Meter:
+
 - `sensor.fronius_current_phase_1` / `_2` / `_3`
 - `sensor.fronius_power_factor_phase_1` / `_2` / `_3`
 - `sensor.fronius_reactive_power_phase_1` / `_2` / `_3`
 
-### Site B: Third-party inverter, no Fronius hardware
+You can also enable Modbus TCP emulation (Step 6) to give the SnapIN a virtual grid meter if needed.
+
+### Site with a third-party inverter and no Fronius hardware
 
 You have a non-Fronius inverter (e.g. Growatt, SolarEdge, Enphase) and a separate energy meter. The Wattpilot has no inverter to pair with — this integration provides that.
 
-- **P_Grid**: Your energy meter sensor (e.g. Shelly 3EM in dual sensor mode)
-- **P_PV**: Your inverter's output power sensor
-- **P_Akku**: Leave blank if no battery
-- **SOC**: Leave blank if no battery
+- **P_Grid** — your energy meter sensor (e.g. Shelly 3EM in dual sensor mode)
+- **P_PV** — your inverter's output power sensor
+- **P_Akku** — leave blank if no battery
+- **SOC** — leave blank if no battery
+
+---
 
 ## Diagnostic sensors
 
-The integration exposes diagnostic entities in HA showing exactly what it's serving to the Wattpilot:
+The integration exposes diagnostic entities in HA showing exactly what is being served to the Wattpilot:
 
 - `sensor.<name>_grid_power` — P_Grid (W)
 - `sensor.<name>_pv_power` — P_PV (W)
@@ -106,28 +166,32 @@ The integration exposes diagnostic entities in HA showing exactly what it's serv
 - `sensor.<name>_load_power` — P_Load (W)
 - `sensor.<name>_battery_soc` — SOC (%)
 - `sensor.<name>_energy_today` — daily PV accumulator (Wh)
-- Per-phase power, current, voltage, power factor, reactive power (when configured)
+- Per-phase power, current, voltage, power factor, and reactive power (when configured)
 
 Sensors for unconfigured fields are hidden automatically.
 
+---
+
 ## Troubleshooting
 
-**Wattpilot doesn't find the inverter during scan:**
+**Wattpilot doesn't find the inverter during scan**
 - Ensure HA and the Wattpilot are on the same subnet — mDNS does not cross subnet boundaries
-- Check that the configured port is reachable: open `http://<ha-ip>:<port>/solar_api/v1/GetPowerFlowRealtimeData.fcgi` in a browser — you should get JSON
+- Check the port is reachable: open `http://<ha-ip>:<port>/solar_api/v1/GetPowerFlowRealtimeData.fcgi` in a browser — you should get JSON
 - If running HA in a VM or container, check that multicast is not being filtered (disable multicast snooping on the bridge interface)
 
-**Error 109 persists after pairing:**
-- The Wattpilot may cache the old "no inverter" state. Power-cycle the Wattpilot.
+**Error 109 persists after pairing**
+- The Wattpilot may cache the old "no inverter" state — power-cycle the Wattpilot
 - Check the Wattpilot is polling the correct HA IP address
 
-**Wattpilot load balancing shows "not available":**
-- Configure the per-phase sensors (Step 4). Without them, load balancing falls back to equal phase splitting.
-- If you have a Fronius Smart Meter, map the `power_factor_phase_*` and `reactive_power_phase_*` sensors — current alone at near-zero real power gives unstable power factor readings.
+**Wattpilot load balancing shows "not available"**
+- Configure the per-phase sensors (Steps 4/5). Without them, load balancing falls back to equal phase splitting.
+- If you have a Fronius Smart Meter, also map `power_factor_phase_*` and `reactive_power_phase_*` — current alone at near-zero real power gives unstable power factor readings
 
-**Sensors show unavailable:**
+**Sensors show unavailable**
 - Check the mapped entity IDs exist and have numeric states in Developer Tools → States
 - Check HA logs for errors from `fronius_virtual_inverter`
+
+---
 
 ## Architecture
 
@@ -143,9 +207,26 @@ FroniusVirtualInverterCoordinator   (reads sensors every N seconds)
         │       ├── GET /solar_api/v1/GetInverterInfo.fcgi
         │       └── GET /solar_api/v1/GetStorageRealtimeData.fcgi
         │
-        ├── RawMDNSAnnouncer        (raw UDP mDNS multicast)
+        ├── RawMDNSAnnouncer        (raw UDP mDNS multicast, IPv4 + IPv6)
         │       ◄── Wattpilot discovers _Fronius-SE-Inverter._tcp.local.
         │
         └── FroniusModbusServer     (Modbus TCP, optional)
                 ◄── Real SnapIN inverter polls for Smart Meter IP data
 ```
+
+---
+
+## Credits & References
+
+This integration would not exist without the prior work and research from:
+
+- **[joscha82/wattpilot](https://github.com/joscha82/wattpilot)** — Wattpilot WebSocket API reverse engineering and documentation
+- **[ruaan-deysel/ha-wattpilot](https://github.com/ruaan-deysel/ha-wattpilot)** — Fronius Wattpilot Home Assistant integration
+- **[americanium/fronius_sm_simulator](https://github.com/americanium/fronius_sm_simulator)** — Fronius Smart Meter Modbus TCP simulator
+- **[Ralim/fronius_meter_emulation](https://github.com/Ralim/fronius_meter_emulation)** — Fronius meter emulation research
+- **[Photovoltaikforum — Fronius Smart Meter TCP Protokoll](https://www.photovoltaikforum.com/thread/185108-fronius-smart-meter-tcp-protokoll/)** — Community research on Modbus TCP register maps and GEN24 meter discovery
+- **[Photovoltaikforum — Gen24 Smart Meter Modbus TCP Emulation mit ESP32](https://www.photovoltaikforum.com/thread/224214-gen24-smart-meter-modbus-tcp-emulation-mit-esp32/)** — ESP32 implementation that confirmed the working register map and Wattpilot compatibility
+- **Fronius Solar API V1 documentation** — Official Fronius API specification
+- **Fronius Smart Meter Register Map (Float)** — Official Fronius Modbus register documentation
+
+Special thanks to the Home Assistant community and Anthropic's Claude for making this possible.
