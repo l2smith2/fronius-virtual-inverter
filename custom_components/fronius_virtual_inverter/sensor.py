@@ -326,5 +326,5 @@ class FroniusVirtualSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        last_updated = self.coordinator.last_updated
-        return {"last_updated": last_updated.isoformat() if last_updated else None}
+        t = self.coordinator._last_refresh
+        return {"last_updated": t.isoformat() if t else None}

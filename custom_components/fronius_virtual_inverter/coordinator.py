@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -66,6 +66,8 @@ class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
             name=DOMAIN,
             update_interval=timedelta(seconds=interval),
         )
+
+        self._last_refresh: datetime | None = None
 
         # PV energy accumulators
         self._e_day: float = 0.0
@@ -188,6 +190,8 @@ class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
             "grid_ct_rating": ct_rating,
             "modbus_address": modbus_address,
         }
+
+        self._last_refresh = datetime.now(timezone.utc)
 
         _LOGGER.debug(
             "Updated power flow: P_Grid=%s P_PV=%s P_Akku=%s P_Load=%s SOC=%s",
