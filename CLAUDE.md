@@ -1,3 +1,4 @@
+<!-- This file provides context for AI-assisted development with Claude Code. It is not end-user documentation. -->
 # Fronius Virtual Inverter — Project Context
 
 ## What this integration does
