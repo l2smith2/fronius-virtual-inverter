@@ -41,17 +41,9 @@ DEFAULT_NAME = "fronius-virtual"
 CONF_MODBUS_ENABLED = "modbus_enabled"
 CONF_MODBUS_PORT = "modbus_port"
 DEFAULT_MODBUS_PORT = 502
-DEFAULT_MODBUS_PORT_ALT = 5020  # non-privileged fallback if 502 not available
-
-# mDNS
-MDNS_SERVICE_TYPE = "_http._tcp.local."
-MDNS_FRONIUS_TYPE = "_fronius-symo._tcp.local."
 
 # Fronius device type for GEN24 hybrid
 FRONIUS_DEVICE_TYPE = 1  # DT=1 = Hybrid inverter (GEN24)
-FRONIUS_SOFTWARE_VERSION = "1.14.1-3"
-FRONIUS_HARDWARE_VERSION = "2.4E"
-FRONIUS_SERIAL = "12345678"  # will be overridden per entry
 
 # API paths
 API_BASE = "/solar_api/v1"
