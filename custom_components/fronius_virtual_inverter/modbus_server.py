@@ -103,32 +103,6 @@ COMMON_BLOCK_START = 40000  # wire address (register - 1)
 METER_MODEL_START = 40069   # wire address where meter model ID sits
 
 
-def _pack_float32(value: float) -> bytes:
-    """Pack a float32 as two big-endian 16-bit words (high word first)."""
-    raw = struct.pack(">f", float(value))
-    return raw  # 4 bytes, big-endian
-
-
-def _pack_uint16(value: int) -> bytes:
-    return struct.pack(">H", value & 0xFFFF)
-
-
-def _pack_uint32(value: int) -> bytes:
-    return struct.pack(">I", value & 0xFFFFFFFF)
-
-
-def _pack_string(text: str, num_registers: int) -> bytes:
-    """Pack a string into num_registers * 2 bytes, null-padded."""
-    encoded = text.encode("ascii")
-    padded = encoded[:num_registers * 2].ljust(num_registers * 2, b"\x00")
-    return padded
-
-
-def _nan_float32() -> bytes:
-    """SunSpec NaN for float32 = 0x7FC00000."""
-    return struct.pack(">f", float("nan"))
-
-
 class FroniusSmartMeterModbusServer:
     """
     Async Modbus TCP server emulating a Fronius Smart Meter IP.
@@ -263,7 +237,6 @@ class FroniusSmartMeterModbusServer:
         """Build the complete SunSpec register map as {wire_address: 2_bytes}."""
         data = self._coordinator.data or {}
         p_grid = data.get("P_Grid") or 0.0
-        e_day = data.get("E_Day") or 0.0
 
         # Accumulated energy split (simplified: assume 50/50 split if only net known)
         # Positive P_Grid = import, negative = export
@@ -350,11 +323,10 @@ class FroniusSmartMeterModbusServer:
         set_float(40119, 0.0)   # VARphC
 
         # Power factor: reg 40122-40123 = wire 40121-40122
-        pf = 1.0 if p_grid == 0 else 1.0
-        set_float(40121, pf)   # PF
-        set_float(40123, pf)   # PFphA
-        set_float(40125, pf)   # PFphB
-        set_float(40127, pf)   # PFphC
+        set_float(40121, 1.0)   # PF
+        set_float(40123, 1.0)   # PFphA
+        set_float(40125, 1.0)   # PFphB
+        set_float(40127, 1.0)   # PFphC
 
         # Energy registers (Wh): TotWhExp at reg 40130-40131 = wire 40129-40130
         set_float(40129, tot_wh_exp)        # TotWhExp

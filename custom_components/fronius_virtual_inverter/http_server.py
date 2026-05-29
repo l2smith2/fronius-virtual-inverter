@@ -19,8 +19,6 @@ from .const import (
     API_STORAGE_REALTIME,
     API_VERSION,
     FRONIUS_DEVICE_TYPE,
-    FRONIUS_HARDWARE_VERSION,
-    FRONIUS_SOFTWARE_VERSION,
 )
 
 if TYPE_CHECKING:
@@ -340,7 +338,6 @@ class FroniusSolarAPIServer:
             if v_c_raw is not None:
                 meter_data["Voltage_AC_Phase_3"] = round(v_c_raw, 1)
 
-        scope = request.rel_url.query.get("Scope", "System")
         body_data: dict = {"0": meter_data}
 
         payload = {

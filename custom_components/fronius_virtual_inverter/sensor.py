@@ -1,7 +1,6 @@
 """Sensor platform for Fronius Virtual Inverter — diagnostic entities."""
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -20,8 +19,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import FroniusVirtualInverterCoordinator
-
-_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
