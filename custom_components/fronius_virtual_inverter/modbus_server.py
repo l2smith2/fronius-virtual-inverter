@@ -152,71 +152,74 @@ class FroniusSmartMeterModbusServer:
         _LOGGER.debug("Modbus client connected: %s", peer)
         try:
             while True:
-                # Modbus TCP frame: 6-byte MBAP header + PDU
-                header = await reader.readexactly(6)
-                if not header or len(header) < 6:
-                    break
+                try:
+                    # Modbus TCP frame: 6-byte MBAP header + PDU
+                    header = await reader.readexactly(6)
+                    if not header or len(header) < 6:
+                        break
 
-                transaction_id = (header[0] << 8) | header[1]
-                # protocol_id = (header[2] << 8) | header[3]  # always 0
-                length = (header[4] << 8) | header[5]
+                    transaction_id = (header[0] << 8) | header[1]
+                    # protocol_id = (header[2] << 8) | header[3]  # always 0
+                    length = (header[4] << 8) | header[5]
 
-                pdu = await reader.readexactly(length)
-                if not pdu or len(pdu) < length:
-                    break
+                    pdu = await reader.readexactly(length)
+                    if not pdu or len(pdu) < length:
+                        break
 
-                unit_id = pdu[0]
-                func_code = pdu[1]
+                    unit_id = pdu[0]
+                    func_code = pdu[1]
 
-                # Only respond to our unit ID
-                if unit_id != self._unit_id:
-                    _LOGGER.debug(
-                        "Ignoring request for unit_id=%d (ours=%d)",
-                        unit_id, self._unit_id,
-                    )
-                    continue
-
-                if func_code in (FC_READ_HOLDING, FC_READ_INPUT):
-                    if len(pdu) < 6:
+                    # Only respond to our unit ID
+                    if unit_id != self._unit_id:
+                        _LOGGER.debug(
+                            "Ignoring request for unit_id=%d (ours=%d)",
+                            unit_id, self._unit_id,
+                        )
                         continue
-                    start_addr = (pdu[2] << 8) | pdu[3]
-                    count = (pdu[4] << 8) | pdu[5]
 
-                    _LOGGER.debug(
-                        "Modbus read FC=%02x start=%d count=%d",
-                        func_code, start_addr, count,
-                    )
+                    if func_code in (FC_READ_HOLDING, FC_READ_INPUT):
+                        if len(pdu) < 6:
+                            continue
+                        start_addr = (pdu[2] << 8) | pdu[3]
+                        count = (pdu[4] << 8) | pdu[5]
 
-                    try:
-                        response_data = self._read_registers(start_addr, count)
-                    except Exception as e:
-                        _LOGGER.error("Error building Modbus register map: %s", e)
-                        exc_pdu = bytes([unit_id, func_code | 0x80, 0x04])
+                        _LOGGER.debug(
+                            "Modbus read FC=%02x start=%d count=%d",
+                            func_code, start_addr, count,
+                        )
+
+                        try:
+                            response_data = self._read_registers(start_addr, count)
+                        except Exception as e:
+                            _LOGGER.error("Error building Modbus register map: %s", e)
+                            exc_pdu = bytes([unit_id, func_code | 0x80, 0x04])
+                            writer.write(self._mbap(transaction_id, exc_pdu))
+                            await writer.drain()
+                            continue
+
+                        if response_data is None:
+                            # Exception response: illegal data address
+                            exc_pdu = bytes([unit_id, func_code | 0x80, 0x02])
+                            resp = self._mbap(transaction_id, exc_pdu)
+                        else:
+                            byte_count = len(response_data)
+                            resp_pdu = bytes([unit_id, func_code, byte_count]) + response_data
+                            resp = self._mbap(transaction_id, resp_pdu)
+
+                        writer.write(resp)
+                        await writer.drain()
+                    else:
+                        # Unsupported function code
+                        exc_pdu = bytes([unit_id, func_code | 0x80, 0x01])
                         writer.write(self._mbap(transaction_id, exc_pdu))
                         await writer.drain()
-                        continue
 
-                    if response_data is None:
-                        # Exception response: illegal data address
-                        exc_pdu = bytes([unit_id, func_code | 0x80, 0x02])
-                        resp = self._mbap(transaction_id, exc_pdu)
-                    else:
-                        byte_count = len(response_data)
-                        resp_pdu = bytes([unit_id, func_code, byte_count]) + response_data
-                        resp = self._mbap(transaction_id, resp_pdu)
-
-                    writer.write(resp)
-                    await writer.drain()
-                else:
-                    # Unsupported function code
-                    exc_pdu = bytes([unit_id, func_code | 0x80, 0x01])
-                    writer.write(self._mbap(transaction_id, exc_pdu))
-                    await writer.drain()
-
-        except (asyncio.IncompleteReadError, ConnectionResetError):
-            pass
-        except Exception as e:
-            _LOGGER.debug("Modbus client error: %s", e)
+                except (asyncio.IncompleteReadError, ConnectionResetError):
+                    break
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    _LOGGER.warning("Modbus client loop error: %s", e)
         finally:
             writer.close()
             _LOGGER.debug("Modbus client disconnected: %s", peer)

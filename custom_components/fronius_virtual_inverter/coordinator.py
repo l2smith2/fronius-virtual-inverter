@@ -80,6 +80,7 @@ class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Read all configured sensors and return power flow data."""
+        self._last_refresh = datetime.now(timezone.utc)
         cfg = self._config
 
         p_grid = read_power_value(
@@ -190,8 +191,6 @@ class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
             "grid_ct_rating": ct_rating,
             "modbus_address": modbus_address,
         }
-
-        self._last_refresh = datetime.now(timezone.utc)
 
         _LOGGER.debug(
             "Updated power flow: P_Grid=%s P_PV=%s P_Akku=%s P_Load=%s SOC=%s",
