@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -327,5 +326,5 @@ class FroniusVirtualSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        t: datetime | None = self.coordinator.last_update_success_time
-        return {"last_updated": t.isoformat() if t is not None else None}
+        last_updated = self.coordinator.last_updated
+        return {"last_updated": last_updated.isoformat() if last_updated else None}
