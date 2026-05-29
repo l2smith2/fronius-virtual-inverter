@@ -187,7 +187,15 @@ class FroniusSmartMeterModbusServer:
                         func_code, start_addr, count,
                     )
 
-                    response_data = self._read_registers(start_addr, count)
+                    try:
+                        response_data = self._read_registers(start_addr, count)
+                    except Exception as e:
+                        _LOGGER.error("Error building Modbus register map: %s", e)
+                        exc_pdu = bytes([unit_id, func_code | 0x80, 0x04])
+                        writer.write(self._mbap(transaction_id, exc_pdu))
+                        await writer.drain()
+                        continue
+
                     if response_data is None:
                         # Exception response: illegal data address
                         exc_pdu = bytes([unit_id, func_code | 0x80, 0x02])
