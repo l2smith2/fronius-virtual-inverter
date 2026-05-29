@@ -1,6 +1,7 @@
 # Fronius Virtual Inverter
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A Home Assistant custom integration that emulates a Fronius inverter and Smart Meter IP, enabling Fronius Wattpilot PV surplus charging without real Fronius hardware.
 
@@ -208,6 +209,23 @@ The integration exposes diagnostic entities in HA showing exactly what is being 
 - Per-phase power, current, voltage, power factor, and reactive power (when configured)
 
 Sensors for unconfigured fields are hidden automatically.
+
+---
+
+## Known Issues
+
+### Sensors become unavailable when enabling new diagnostic entities
+When enabling a previously-disabled diagnostic sensor (e.g. per-phase sensors),
+all integration sensors may briefly become unavailable. This is a known issue
+with the current coordinator implementation. A reload of the integration
+(Settings → Devices & Services → Fronius Virtual Inverter → ⋮ → Reload)
+resolves it immediately. This will be fixed in a future release.
+
+### Load balancing fallback mode
+In some conditions (near-zero real power with high reactive current),
+the Wattpilot may show "Load Balancing not available — charging in fallback mode".
+Surplus charging still works correctly in fallback mode. Configure Power Factor
+and Reactive Power Phase A sensors to resolve this.
 
 ---
 

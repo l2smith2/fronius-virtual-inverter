@@ -80,123 +80,129 @@ class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Read all configured sensors and return power flow data."""
-        self._last_refresh = datetime.now(timezone.utc)
-        cfg = self._config
+        try:
+            self._last_refresh = datetime.now(timezone.utc)
+            cfg = self._config
 
-        p_grid = read_power_value(
-            self.hass,
-            single_sensor=cfg.get(CONF_P_GRID_SENSOR),
-            pos_sensor=cfg.get(CONF_P_GRID_SENSOR_POS),
-            neg_sensor=cfg.get(CONF_P_GRID_SENSOR_NEG),
-            dual_mode=bool(cfg.get(CONF_P_GRID_DUAL_MODE, False)),
-            invert=bool(cfg.get(CONF_P_GRID_INVERT, False)),
-        )
+            p_grid = read_power_value(
+                self.hass,
+                single_sensor=cfg.get(CONF_P_GRID_SENSOR),
+                pos_sensor=cfg.get(CONF_P_GRID_SENSOR_POS),
+                neg_sensor=cfg.get(CONF_P_GRID_SENSOR_NEG),
+                dual_mode=bool(cfg.get(CONF_P_GRID_DUAL_MODE, False)),
+                invert=bool(cfg.get(CONF_P_GRID_INVERT, False)),
+            )
 
-        p_pv = read_power_value(
-            self.hass,
-            single_sensor=cfg.get(CONF_P_PV_SENSOR),
-            pos_sensor=None,
-            neg_sensor=None,
-            dual_mode=False,
-            invert=bool(cfg.get(CONF_P_PV_INVERT, False)),
-        )
+            p_pv = read_power_value(
+                self.hass,
+                single_sensor=cfg.get(CONF_P_PV_SENSOR),
+                pos_sensor=None,
+                neg_sensor=None,
+                dual_mode=False,
+                invert=bool(cfg.get(CONF_P_PV_INVERT, False)),
+            )
 
-        p_akku = read_power_value(
-            self.hass,
-            single_sensor=cfg.get(CONF_P_AKKU_SENSOR),
-            pos_sensor=cfg.get(CONF_P_AKKU_SENSOR_POS),
-            neg_sensor=cfg.get(CONF_P_AKKU_SENSOR_NEG),
-            dual_mode=bool(cfg.get(CONF_P_AKKU_DUAL_MODE, False)),
-            invert=bool(cfg.get(CONF_P_AKKU_INVERT, False)),
-        )
+            p_akku = read_power_value(
+                self.hass,
+                single_sensor=cfg.get(CONF_P_AKKU_SENSOR),
+                pos_sensor=cfg.get(CONF_P_AKKU_SENSOR_POS),
+                neg_sensor=cfg.get(CONF_P_AKKU_SENSOR_NEG),
+                dual_mode=bool(cfg.get(CONF_P_AKKU_DUAL_MODE, False)),
+                invert=bool(cfg.get(CONF_P_AKKU_INVERT, False)),
+            )
 
-        p_load = read_power_value(
-            self.hass,
-            single_sensor=cfg.get(CONF_P_LOAD_SENSOR),
-            pos_sensor=None,
-            neg_sensor=None,
-            dual_mode=False,
-            invert=bool(cfg.get(CONF_P_LOAD_INVERT, False)),
-        )
+            p_load = read_power_value(
+                self.hass,
+                single_sensor=cfg.get(CONF_P_LOAD_SENSOR),
+                pos_sensor=None,
+                neg_sensor=None,
+                dual_mode=False,
+                invert=bool(cfg.get(CONF_P_LOAD_INVERT, False)),
+            )
 
-        soc = read_soc(self.hass, cfg.get(CONF_SOC_SENSOR))
+            soc = read_soc(self.hass, cfg.get(CONF_SOC_SENSOR))
 
-        # Per-phase grid power and current
-        p_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_P_GRID_PHASE_A))
-        p_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_P_GRID_PHASE_B))
-        p_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_P_GRID_PHASE_C))
-        i_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_I_GRID_PHASE_A))
-        i_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_I_GRID_PHASE_B))
-        i_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_I_GRID_PHASE_C))
+            # Per-phase grid power and current
+            p_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_P_GRID_PHASE_A))
+            p_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_P_GRID_PHASE_B))
+            p_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_P_GRID_PHASE_C))
+            i_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_I_GRID_PHASE_A))
+            i_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_I_GRID_PHASE_B))
+            i_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_I_GRID_PHASE_C))
 
-        # Store None when no sensor configured — http_server defaults to 240V for derivation
-        v_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_V_GRID_PHASE_A))
-        v_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_V_GRID_PHASE_B))
-        v_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_V_GRID_PHASE_C))
-        pf_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_POWER_FACTOR_PHASE_A))
-        pf_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_POWER_FACTOR_PHASE_B))
-        pf_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_POWER_FACTOR_PHASE_C))
-        q_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_Q_GRID_PHASE_A))
-        q_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_Q_GRID_PHASE_B))
-        q_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_Q_GRID_PHASE_C))
+            # Store None when no sensor configured — http_server defaults to 240V for derivation
+            v_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_V_GRID_PHASE_A))
+            v_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_V_GRID_PHASE_B))
+            v_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_V_GRID_PHASE_C))
+            pf_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_POWER_FACTOR_PHASE_A))
+            pf_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_POWER_FACTOR_PHASE_B))
+            pf_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_POWER_FACTOR_PHASE_C))
+            q_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_Q_GRID_PHASE_A))
+            q_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_Q_GRID_PHASE_B))
+            q_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_Q_GRID_PHASE_C))
 
-        grid_phases = int(cfg.get(CONF_GRID_PHASES, "1"))
-        ct_rating = float(cfg.get(CONF_GRID_CT_RATING, DEFAULT_GRID_CT_RATING))
-        modbus_address = int(cfg.get(CONF_MODBUS_ADDRESS, DEFAULT_MODBUS_ADDRESS))
+            grid_phases = int(cfg.get(CONF_GRID_PHASES, "1"))
+            ct_rating = float(cfg.get(CONF_GRID_CT_RATING, DEFAULT_GRID_CT_RATING))
+            modbus_address = int(cfg.get(CONF_MODBUS_ADDRESS, DEFAULT_MODBUS_ADDRESS))
 
-        interval_s = float(int(cfg.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)))
+            interval_s = float(int(cfg.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)))
 
-        # Accumulate PV energy
-        if p_pv is not None and p_pv > 0:
-            increment_wh = p_pv * interval_s / 3600.0
-            self._e_day += increment_wh
-            self._e_year += increment_wh
-            self._e_total += increment_wh
+            # Accumulate PV energy
+            if p_pv is not None and p_pv > 0:
+                increment_wh = p_pv * interval_s / 3600.0
+                self._e_day += increment_wh
+                self._e_year += increment_wh
+                self._e_total += increment_wh
 
-        # Accumulate grid energy for Modbus meter
-        if p_grid is not None:
-            grid_wh = abs(p_grid) * interval_s / 3600.0
-            if p_grid > 0:
-                self._tot_wh_imp += grid_wh
-            elif p_grid < 0:
-                self._tot_wh_exp += grid_wh
+            # Accumulate grid energy for Modbus meter
+            if p_grid is not None:
+                grid_wh = abs(p_grid) * interval_s / 3600.0
+                if p_grid > 0:
+                    self._tot_wh_imp += grid_wh
+                elif p_grid < 0:
+                    self._tot_wh_exp += grid_wh
 
-        result: dict[str, Any] = {
-            "P_Grid": p_grid,
-            "P_PV": p_pv,
-            "P_Akku": p_akku,
-            "P_Load": p_load,
-            "SOC": soc,
-            "E_Day": self._e_day,
-            "E_Year": self._e_year,
-            "E_Total": self._e_total,
-            "_tot_wh_imp": self._tot_wh_imp,
-            "_tot_wh_exp": self._tot_wh_exp,
-            "P_Grid_A": p_grid_a,
-            "P_Grid_B": p_grid_b,
-            "P_Grid_C": p_grid_c,
-            "I_Grid_A": i_grid_a,
-            "I_Grid_B": i_grid_b,
-            "I_Grid_C": i_grid_c,
-            "V_Grid_A": v_grid_a,
-            "V_Grid_B": v_grid_b,
-            "V_Grid_C": v_grid_c,
-            "PF_Grid_A": pf_grid_a,
-            "PF_Grid_B": pf_grid_b,
-            "PF_Grid_C": pf_grid_c,
-            "Q_Grid_A": q_grid_a,
-            "Q_Grid_B": q_grid_b,
-            "Q_Grid_C": q_grid_c,
-            "grid_phases": grid_phases,
-            "grid_ct_rating": ct_rating,
-            "modbus_address": modbus_address,
-        }
+            result: dict[str, Any] = {
+                "P_Grid": p_grid,
+                "P_PV": p_pv,
+                "P_Akku": p_akku,
+                "P_Load": p_load,
+                "SOC": soc,
+                "E_Day": self._e_day,
+                "E_Year": self._e_year,
+                "E_Total": self._e_total,
+                "_tot_wh_imp": self._tot_wh_imp,
+                "_tot_wh_exp": self._tot_wh_exp,
+                "P_Grid_A": p_grid_a,
+                "P_Grid_B": p_grid_b,
+                "P_Grid_C": p_grid_c,
+                "I_Grid_A": i_grid_a,
+                "I_Grid_B": i_grid_b,
+                "I_Grid_C": i_grid_c,
+                "V_Grid_A": v_grid_a,
+                "V_Grid_B": v_grid_b,
+                "V_Grid_C": v_grid_c,
+                "PF_Grid_A": pf_grid_a,
+                "PF_Grid_B": pf_grid_b,
+                "PF_Grid_C": pf_grid_c,
+                "Q_Grid_A": q_grid_a,
+                "Q_Grid_B": q_grid_b,
+                "Q_Grid_C": q_grid_c,
+                "grid_phases": grid_phases,
+                "grid_ct_rating": ct_rating,
+                "modbus_address": modbus_address,
+            }
 
-        _LOGGER.debug(
-            "Updated power flow: P_Grid=%s P_PV=%s P_Akku=%s P_Load=%s SOC=%s",
-            p_grid, p_pv, p_akku, p_load, soc,
-        )
-        return result
+            _LOGGER.debug(
+                "Updated power flow: P_Grid=%s P_PV=%s P_Akku=%s P_Load=%s SOC=%s",
+                p_grid, p_pv, p_akku, p_load, soc,
+            )
+            return result
+        except Exception as e:
+            _LOGGER.error("Error updating data: %s", e, exc_info=True)
+            if self.data is not None:
+                return self.data  # return last known good data
+            raise  # re-raise on first run so ConfigEntryNotReady works correctly
 
     def update_config(self, new_config: dict[str, Any]) -> None:
         """Update config (called after options flow)."""
