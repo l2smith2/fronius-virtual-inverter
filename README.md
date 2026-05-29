@@ -10,7 +10,7 @@ A Home Assistant custom integration that emulates a Fronius inverter and Smart M
 
 If this integration saves you energy (and it will), consider buying me a coffee!
 
-[![Buy Me A Coffee](https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png)](https://www.buymeacoffee.com/l2smith2)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-l2smith2-yellow?style=flat-square&logo=buy-me-a-coffee)](https://www.buymeacoffee.com/l2smith2)
 
 ---
 
