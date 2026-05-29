@@ -99,6 +99,16 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 - Config flow restructured into 6 steps: user → grid → generation → advanced (Phase A) → three_phase (Phase B/C) → modbus ✓
 - Per-phase diagnostic sensors disabled by default (entity_registry_enabled_default=False) ✓
 - Unconfigured diagnostic sensors hidden via available property (checks last_update_success + None) ✓
+- Grid energy import/export accumulator sensors added (TOTAL_INCREASING, disabled by default) ✓
+- extra_state_attributes on all sensors returns last_updated ISO timestamp (safe getattr + try/except) ✓
+- Coordinator _async_update_data wrapped in try/except: returns last known data on error, re-raises on first run ✓
+- mDNS announce loop: per-iteration try/except with 5s retry on error ✓
+- Modbus _handle_client: per-iteration try/except; _read_registers failure returns exception code 0x04 ✓
+- HTTP server: aiohttp error middleware logs and recovers from handler exceptions ✓
+
+## Known Issues
+- **Enabling a diagnostic entity triggers a coordinator refresh** — if that refresh fails, all sensors go unavailable. A full HA restart is required to recover. Root cause under investigation.
+- **Load balancing fallback mode** — in some conditions (suspected near-zero real power with high reactive current) the Wattpilot shows "Load Balancing not available". Surplus charging still works. Exact trigger unknown.
 
 ## Network topology (example)
 - HA host: 192.168.1.100 (your HA machine IP)
@@ -125,15 +135,19 @@ https://github.com/l2smith2/fronius-virtual-inverter
 - Symlinks do NOT work reliably for HA custom components — always use real directory copy
 
 ## manifest.json
+- Version: `1.0.0`
 - Minimum HA version: `2026.3.0`
 - `iot_class`: `local_push`
 - `config_flow`: true
 
 ## Diagnostic sensors (sensor.py)
 - 6 core sensors always enabled: Grid Power, PV Power, Battery Power, Load Power, Battery SOC, Energy Today
+- 2 energy accumulator sensors disabled by default: Grid Energy Imported (`_tot_wh_imp`), Grid Energy Exported (`_tot_wh_exp`) — enable to add to Energy dashboard (TOTAL_INCREASING + ENERGY + Wh)
 - 15 per-phase sensors (P/I/V/PF/Q for phases A/B/C) have `entity_registry_enabled_default=False` — disabled until user explicitly enables or configures them
+- 1 Modbus Device Address sensor (disabled by default)
 - `available` property: checks `last_update_success` → `data is None` → `data.get(key) is None`
 - Coordinator stores `None` (not a default value) for unconfigured sensors so `available` correctly hides them
+- `extra_state_attributes` returns `{"last_updated": iso_string_or_None}` using `getattr(coordinator, '_last_refresh', None)` + try/except
 
 ## HA path
 /config/custom_components/fronius_virtual_inverter/
