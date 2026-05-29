@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -88,6 +87,28 @@ SENSOR_DESCRIPTIONS: tuple[FroniusSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
         entity_category=EntityCategory.DIAGNOSTIC,
         icon="mdi:solar-power-variant",
+    ),
+    FroniusSensorEntityDescription(
+        key="grid_energy_imported",
+        data_key="_tot_wh_imp",
+        name="Grid Energy Imported",
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        icon="mdi:home-import-outline",
+    ),
+    FroniusSensorEntityDescription(
+        key="grid_energy_exported",
+        data_key="_tot_wh_exp",
+        name="Grid Energy Exported",
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        icon="mdi:home-export-outline",
     ),
     FroniusSensorEntityDescription(
         key="p_grid_a",
@@ -327,5 +348,5 @@ class FroniusVirtualSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        t: datetime | None = self.coordinator.last_update_success_time
-        return {"last_updated": t.isoformat() if t is not None else None}
+        t = self.coordinator._last_refresh
+        return {"last_updated": t.isoformat() if t else None}
