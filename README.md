@@ -216,16 +216,14 @@ Sensors for unconfigured fields are hidden automatically.
 
 ### Sensors become unavailable when enabling new diagnostic entities
 When enabling a previously-disabled diagnostic sensor (e.g. per-phase sensors),
-all integration sensors may briefly become unavailable. This is a known issue
-with the current coordinator implementation. A reload of the integration
-(Settings → Devices & Services → Fronius Virtual Inverter → ⋮ → Reload)
-resolves it immediately. This will be fixed in a future release.
+all integration sensors may become unavailable. This is a known issue
+with the current coordinator implementation. A full Home Assistant restart
+resolves it. This will be fixed in a future release.
 
 ### Load balancing fallback mode
-In some conditions (near-zero real power with high reactive current),
-the Wattpilot may show "Load Balancing not available — charging in fallback mode".
-Surplus charging still works correctly in fallback mode. Configure Power Factor
-and Reactive Power Phase A sensors to resolve this.
+In some conditions the Wattpilot may show "Load Balancing not available — charging
+in fallback mode". Surplus charging still works correctly in fallback mode.
+The exact sensor or data condition that triggers this is still under investigation.
 
 ---
 
