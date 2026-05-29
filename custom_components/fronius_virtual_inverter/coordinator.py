@@ -78,12 +78,6 @@ class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
         self._tot_wh_imp: float = 0.0
         self._tot_wh_exp: float = 0.0
 
-    async def _async_refresh(self) -> None:
-        """Override to log refresh lifecycle for diagnosing update loop stalls."""
-        _LOGGER.debug("Coordinator refresh triggered")
-        await super()._async_refresh()
-        _LOGGER.debug("Coordinator refresh complete, success=%s", self.last_update_success)
-
     async def _async_update_data(self) -> dict[str, Any]:
         """Read all configured sensors and return power flow data."""
         try:
