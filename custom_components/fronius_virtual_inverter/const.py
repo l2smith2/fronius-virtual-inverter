@@ -41,6 +41,8 @@ DEFAULT_NAME = "fronius-virtual"
 CONF_MODBUS_ENABLED = "modbus_enabled"
 CONF_MODBUS_PORT = "modbus_port"
 DEFAULT_MODBUS_PORT = 502
+CONF_MODBUS_ADDRESS = "modbus_address"
+DEFAULT_MODBUS_ADDRESS = 240
 
 # Fronius device type for GEN24 hybrid
 FRONIUS_DEVICE_TYPE = 1  # DT=1 = Hybrid inverter (GEN24)

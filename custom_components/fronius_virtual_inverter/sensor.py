@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -253,6 +254,17 @@ SENSOR_DESCRIPTIONS: tuple[FroniusSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         icon="mdi:sine-wave",
     ),
+    FroniusSensorEntityDescription(
+        key="modbus_address",
+        data_key="modbus_address",
+        name="Modbus Device Address",
+        device_class=None,
+        state_class=None,
+        native_unit_of_measurement=None,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        icon="mdi:ethernet",
+    ),
 )
 
 
@@ -312,3 +324,8 @@ class FroniusVirtualSensor(CoordinatorEntity, SensorEntity):
         if val is None:
             return None
         return round(val, 2)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        t: datetime | None = self.coordinator.last_update_success_time
+        return {"last_updated": t.isoformat() if t is not None else None}

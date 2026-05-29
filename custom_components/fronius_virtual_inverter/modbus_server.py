@@ -92,7 +92,6 @@ _LOGGER = logging.getLogger(__name__)
 # SunSpec constants
 SUNSPEC_SID = 0x53756e53  # 'SunS'
 SUNSPEC_END = 0xFFFF
-UNIT_ID_METER = 240  # Fronius Smart Meter IP unit ID (confirmed from GEN24)
 
 # Modbus function codes
 FC_READ_HOLDING = 0x03
@@ -117,10 +116,12 @@ class FroniusSmartMeterModbusServer:
         coordinator: "FroniusVirtualInverterCoordinator",
         port: int,
         serial: str,
+        unit_id: int = 240,
     ) -> None:
         self._coordinator = coordinator
         self._port = port
         self._serial = serial
+        self._unit_id = unit_id
         self._server: asyncio.AbstractServer | None = None
 
     async def start(self) -> None:
@@ -133,7 +134,7 @@ class FroniusSmartMeterModbusServer:
         _LOGGER.info(
             "Fronius Smart Meter IP Modbus server started on port %d (unit_id=%d)",
             self._port,
-            UNIT_ID_METER,
+            self._unit_id,
         )
 
     async def stop(self) -> None:
@@ -168,10 +169,10 @@ class FroniusSmartMeterModbusServer:
                 func_code = pdu[1]
 
                 # Only respond to our unit ID
-                if unit_id != UNIT_ID_METER:
+                if unit_id != self._unit_id:
                     _LOGGER.debug(
                         "Ignoring request for unit_id=%d (ours=%d)",
-                        unit_id, UNIT_ID_METER,
+                        unit_id, self._unit_id,
                     )
                     continue
 
@@ -276,7 +277,7 @@ class FroniusSmartMeterModbusServer:
         set_string(40036, "1.0", 8)              # 40037-40044 Opt
         set_string(40044, "1.0.0", 8)            # 40045-40052 Vr
         set_string(40052, self._serial, 16)      # 40053-40068 SN
-        set_uint16(40068, UNIT_ID_METER)         # 40069 DA
+        set_uint16(40068, self._unit_id)          # 40069 DA
 
         # ── Meter model 213 (three-phase float) ───────────────────────────
         # Starts at wire addr 40069 (register 40070)

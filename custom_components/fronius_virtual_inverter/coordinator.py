@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
+    CONF_MODBUS_ADDRESS,
     CONF_GRID_CT_RATING,
     CONF_GRID_PHASES,
     CONF_I_GRID_PHASE_A,
@@ -42,6 +43,7 @@ from .const import (
     CONF_P_PV_SENSOR,
     CONF_SOC_SENSOR,
     CONF_UPDATE_INTERVAL,
+    DEFAULT_MODBUS_ADDRESS,
     DEFAULT_GRID_CT_RATING,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
@@ -137,6 +139,7 @@ class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
 
         grid_phases = int(cfg.get(CONF_GRID_PHASES, "1"))
         ct_rating = float(cfg.get(CONF_GRID_CT_RATING, DEFAULT_GRID_CT_RATING))
+        modbus_address = int(cfg.get(CONF_MODBUS_ADDRESS, DEFAULT_MODBUS_ADDRESS))
 
         interval_s = float(int(cfg.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)))
 
@@ -183,6 +186,7 @@ class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
             "Q_Grid_C": q_grid_c,
             "grid_phases": grid_phases,
             "grid_ct_rating": ct_rating,
+            "modbus_address": modbus_address,
         }
 
         _LOGGER.debug(

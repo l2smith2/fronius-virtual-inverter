@@ -19,6 +19,7 @@ from .const import (
     CONF_I_GRID_PHASE_A,
     CONF_I_GRID_PHASE_B,
     CONF_I_GRID_PHASE_C,
+    CONF_MODBUS_ADDRESS,
     CONF_MODBUS_ENABLED,
     CONF_MODBUS_PORT,
     CONF_P_AKKU_DUAL_MODE,
@@ -52,6 +53,7 @@ from .const import (
     CONF_V_GRID_PHASE_B,
     CONF_V_GRID_PHASE_C,
     DEFAULT_GRID_CT_RATING,
+    DEFAULT_MODBUS_ADDRESS,
     DEFAULT_MODBUS_PORT,
     DEFAULT_NAME,
     DEFAULT_PORT,
@@ -169,6 +171,9 @@ def _modbus_schema(current: dict) -> vol.Schema:
         vol.Optional(CONF_MODBUS_ENABLED, default=current.get(CONF_MODBUS_ENABLED, False)): selector.BooleanSelector(),
         vol.Optional(CONF_MODBUS_PORT, default=current.get(CONF_MODBUS_PORT, DEFAULT_MODBUS_PORT)): selector.NumberSelector(
             selector.NumberSelectorConfig(min=1, max=65535, mode="box")
+        ),
+        vol.Optional(CONF_MODBUS_ADDRESS, default=current.get(CONF_MODBUS_ADDRESS, DEFAULT_MODBUS_ADDRESS)): selector.NumberSelector(
+            selector.NumberSelectorConfig(min=1, max=247, step=1, mode="box")
         ),
     })
 
