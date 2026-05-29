@@ -199,8 +199,10 @@ class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
             )
             return result
         except Exception as e:
-            _LOGGER.error("Error updating coordinator data: %s", e, exc_info=True)
-            return self.data  # return last known good data
+            _LOGGER.error("Error updating data: %s", e, exc_info=True)
+            if self.data is not None:
+                return self.data  # return last known good data
+            raise  # re-raise on first run so ConfigEntryNotReady works correctly
 
     def update_config(self, new_config: dict[str, Any]) -> None:
         """Update config (called after options flow)."""
