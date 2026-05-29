@@ -27,6 +27,15 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 
+@web.middleware
+async def _error_middleware(request: web.Request, handler) -> web.Response:
+    try:
+        return await handler(request)
+    except Exception as e:
+        _LOGGER.error("HTTP handler error for %s: %s", request.path, e)
+        return web.Response(status=500)
+
+
 def _make_head(timestamp: str | None = None) -> dict:
     if timestamp is None:
         timestamp = datetime.now(timezone.utc).astimezone().isoformat()
@@ -53,7 +62,7 @@ class FroniusSolarAPIServer:
         self._serial = serial
         self._inverter_name = inverter_name
         self._system_name = system_name
-        self._app = web.Application()
+        self._app = web.Application(middlewares=[_error_middleware])
         self._runner: web.AppRunner | None = None
         self._site: web.TCPSite | None = None
         self._setup_routes()

@@ -288,19 +288,25 @@ class RawMDNSAnnouncer:
             pass
 
         while True:
-            if self._sock is not None:
-                for pkt in self._packets:
-                    try:
-                        self._sock.sendto(pkt, (MDNS_ADDR, MDNS_PORT))
-                    except Exception as err:
-                        _LOGGER.debug("IPv4 mDNS send error: %s", err)
-            if self._sock6 is not None:
-                for pkt in self._packets6:
-                    try:
-                        self._sock6.sendto(pkt, (MDNS_ADDR6, MDNS_PORT, 0, iface_idx))
-                    except Exception as err:
-                        _LOGGER.debug("IPv6 mDNS send error: %s", err)
-            await asyncio.sleep(1)
+            try:
+                if self._sock is not None:
+                    for pkt in self._packets:
+                        try:
+                            self._sock.sendto(pkt, (MDNS_ADDR, MDNS_PORT))
+                        except Exception as err:
+                            _LOGGER.debug("IPv4 mDNS send error: %s", err)
+                if self._sock6 is not None:
+                    for pkt in self._packets6:
+                        try:
+                            self._sock6.sendto(pkt, (MDNS_ADDR6, MDNS_PORT, 0, iface_idx))
+                        except Exception as err:
+                            _LOGGER.debug("IPv6 mDNS send error: %s", err)
+                await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                _LOGGER.warning("mDNS announce error (will retry): %s", e)
+                await asyncio.sleep(5)
 
     async def async_stop(self) -> None:
         """Cancel the announce loop and close sockets."""
