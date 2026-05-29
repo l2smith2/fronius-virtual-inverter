@@ -120,11 +120,13 @@
         "description": "Optionally emulate a Fronius Smart Meter IP over Modbus TCP. Useful if you have a real Fronius SnapIN inverter on the same network that needs a grid meter.",
         "data": {
           "modbus_enabled": "Enable Smart Meter IP (Modbus TCP)",
-          "modbus_port": "Modbus Port"
+          "modbus_port": "Modbus Port",
+          "modbus_address": "Modbus Device Address"
         },
         "data_description": {
           "modbus_enabled": "Emulate a Fronius Smart Meter IP via Modbus TCP so a real SnapIN inverter can use HA as its grid meter.",
-          "modbus_port": "Modbus TCP port (default: 502 — use 5020 if HA lacks permission to bind port 502)."
+          "modbus_port": "Modbus TCP port (default: 502 — use 5020 if HA lacks permission to bind port 502).",
+          "modbus_address": "Modbus unit ID for the Smart Meter IP (default: 240). Only change if running multiple instances."
         }
       }
     },
@@ -253,11 +255,13 @@
         "description": "Update Modbus Smart Meter IP settings.",
         "data": {
           "modbus_enabled": "Enable Smart Meter IP (Modbus TCP)",
-          "modbus_port": "Modbus Port"
+          "modbus_port": "Modbus Port",
+          "modbus_address": "Modbus Device Address"
         },
         "data_description": {
           "modbus_enabled": "Emulate a Fronius Smart Meter IP via Modbus TCP.",
-          "modbus_port": "Modbus TCP port (default: 502 — use 5020 if HA lacks permission to bind port 502)."
+          "modbus_port": "Modbus TCP port (default: 502 — use 5020 if HA lacks permission to bind port 502).",
+          "modbus_address": "Modbus unit ID for the Smart Meter IP (default: 240). Only change if running multiple instances."
         }
       }
     }

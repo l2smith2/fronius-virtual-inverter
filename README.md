@@ -46,7 +46,7 @@ The Wattpilot's Eco (PV surplus) charging mode requires a paired Fronius inverte
 - Wattpilot discovery and pairing via raw mDNS multicast (IPv4 + IPv6)
 - Fronius Solar API v1 HTTP server with all endpoints the Wattpilot polls
 - Per-phase load balancing data (`GetMeterRealtimeData`) for accurate phase-aware charging
-- Optional Modbus TCP Smart Meter IP emulation (SunSpec float model 213, unit ID 240)
+- Optional Modbus TCP Smart Meter IP emulation (SunSpec float model 213, configurable unit ID)
 - Flexible sensor mapping: signed sensors, separate import/export sensors, sign invert
 - Automatic unit conversion: kW→W, kWh→Wh, MW→W, MWh→Wh
 - Diagnostic HA sensors showing exactly what is being served to the Wattpilot
@@ -85,26 +85,33 @@ Then go to **Settings → Devices & Services → Add Integration** and search fo
 
 Setup is a guided multi-step flow:
 
-**Step 1 — Basic settings**
+**Step 1 — Virtual Inverter Setup**
 - **Inverter Name** — mDNS hostname (e.g. `my-inverter` → `my-inverter.local`). Lowercase letters and hyphens only.
 - **System Display Name** — shown in the Wattpilot pairing screen (e.g. `MyHome`). Falls back to inverter name if blank.
-- **Port** — HTTP port for the Solar API server (default: `80`). Use a port above 1024 if HA lacks permission to bind 80.
+- **HTTP Server Port** — port for the Solar API server (default: `80`). Use a port above 1024 if HA lacks permission to bind 80.
 - **Update Interval** — how often to refresh sensor values (default: 10 seconds).
 
-**Step 2 — Grid settings**
-Map your electricity meter sensor, set phase count (single/three-phase), circuit breaker rating, and optionally enable the per-phase sensor steps for Wattpilot load balancing.
+**Step 2 — Grid Configuration**
+- **Grid Power Sensor** — your electricity meter. Positive = importing from grid, negative = exporting.
+- **Use Separate Import/Export Sensors** — enable if your meter provides separate import and export readings (e.g. a Shelly 3EM)
+- **Invert Grid Sign** — enable if your sensor's sign is reversed relative to the convention above
+- **Grid Phase Configuration** — single or three-phase
+- **Grid Circuit Breaker Rating** — main breaker in amps; Wattpilot uses this for overload protection (default: 32A)
+- **Configure per-phase load balancing sensors** — if enabled, Steps 4 and 5 are shown
 
-**Step 3 — Solar & Battery**
-Map solar generation, battery charge/discharge, house load, and battery state of charge sensors. All fields are optional. The **Battery State of Charge** field accepts any HA sensor reporting 0–100% — it does not need to come from a Fronius battery. Mapping a SOC sensor unlocks the battery threshold controls in the Solar.wattpilot app (Charges from, Discharges until, Discharges until (boost)).
+**Step 3 — PV & Battery**
+Map solar generation, battery charge/discharge, house load, and battery state of charge sensors. All fields are optional. The **Battery State of Charge** field accepts any HA sensor reporting 0–100% — it does not need to come from a Fronius battery. Mapping it unlocks the battery threshold controls in the Solar.wattpilot app (Charges from, Discharges until, Discharges until (boost)).
 
-**Step 4 — Per-phase load balancing — Phase A** *(optional)*
-Phase A power, current, voltage, power factor, and reactive power sensors. Only shown if you enabled the per-phase toggle in Step 2.
+**Step 4 — Per-Phase Load Balancing — Phase A** *(optional)*
+Phase A power, current, voltage, power factor, and reactive power sensors. Only shown if you enabled **Configure per-phase load balancing sensors** in Step 2.
 
-**Step 5 — Per-phase load balancing — Phases B & C** *(optional, three-phase only)*
-Phase B and C sensors. Only shown if three-phase is selected.
+**Step 5 — Per-Phase Load Balancing — Phases B & C** *(optional, three-phase only)*
+Phase B and C sensors. Only shown if three-phase is selected in Step 2.
 
-**Step 6 — Advanced options**
-Enable Modbus TCP Smart Meter IP emulation and set the Modbus port (default: 502).
+**Step 6 — Advanced Options**
+- **Enable Smart Meter IP (Modbus TCP)** — emulate a Fronius Smart Meter IP so a real SnapIN inverter can use HA as its grid meter
+- **Modbus Port** — Modbus TCP port (default: 502; use 5020 if HA lacks permission to bind 502)
+- **Modbus Device Address** — Modbus unit ID (default: 240). Only change if running multiple instances.
 
 All steps are available again under **Settings → Devices & Services → Configure**.
 
@@ -112,11 +119,11 @@ All steps are available again under **Settings → Devices & Services → Config
 
 | Field | Sign convention | Notes |
 |-------|----------------|-------|
-| P_Grid | positive = importing, negative = exporting | Grid meter power |
-| P_PV | always positive | Solar generation |
-| P_Akku | positive = charging, negative = discharging | Battery power |
-| P_Load | always negative | House consumption |
-| SOC | 0–100% | Battery state of charge |
+| Grid Power | positive = importing, negative = exporting | Grid meter power |
+| Solar Generation | always positive | Solar panel output |
+| Battery Power | positive = charging, negative = discharging | Battery power |
+| House Consumption | always negative | House load |
+| Battery State of Charge | 0–100% | Battery percentage |
 
 ### Dual sensor mode
 
@@ -124,7 +131,7 @@ If your meter provides separate import and export sensors (e.g. a Shelly 3EM giv
 
 ### Sign invert
 
-If your sensor reports a signed value with the opposite sign to Fronius convention, enable **Invert Sign**.
+If your sensor reports a signed value with the opposite sign to Fronius convention, enable the invert toggle for that field (e.g. **Invert Grid Sign**, **Invert Solar Sign**, **Invert Battery Sign**).
 
 ---
 
@@ -148,10 +155,10 @@ You already have a Fronius inverter integrated in HA via the Fronius integration
 
 Map sensors from the Fronius HA integration:
 
-- **P_Grid** — `sensor.fronius_power_grid` (already signed correctly)
-- **P_PV** — `sensor.fronius_power_photovoltaics`
-- **P_Akku** — use dual sensor mode with your battery's charge/discharge sensors
-- **SOC** — your battery's state of charge sensor
+- **Grid Power Sensor** — `sensor.fronius_power_grid` (already signed correctly)
+- **Solar Generation Sensor** — `sensor.fronius_power_photovoltaics`
+- **Battery Power Sensor** — enable **Use Separate Charge/Discharge Sensors** with your battery's charge/discharge sensors
+- **Battery State of Charge** — your battery's state of charge sensor
 
 For load balancing, map the per-phase sensors from your Fronius Smart Meter:
 
@@ -165,10 +172,10 @@ You can also enable Modbus TCP emulation (Step 6) to give the SnapIN a virtual g
 
 You have a non-Fronius inverter (e.g. Growatt, SolarEdge, Enphase) and a separate energy meter. The Wattpilot has no inverter to pair with — this integration provides that.
 
-- **P_Grid** — your energy meter sensor (e.g. Shelly 3EM in dual sensor mode)
-- **P_PV** — your inverter's output power sensor
-- **P_Akku** — leave blank if no battery
-- **SOC** — leave blank if no battery
+- **Grid Power Sensor** — your energy meter (e.g. Shelly 3EM; enable **Use Separate Import/Export Sensors** for dual readings)
+- **Solar Generation Sensor** — your inverter's output power sensor
+- **Battery Power Sensor** — leave blank if no battery
+- **Battery State of Charge** — leave blank if no battery
 
 ### Battery SOC from third-party systems
 
@@ -189,12 +196,13 @@ regardless of brand or inverter manufacturer.
 
 The integration exposes diagnostic entities in HA showing exactly what is being served to the Wattpilot:
 
-- `sensor.<name>_grid_power` — P_Grid (W)
-- `sensor.<name>_pv_power` — P_PV (W)
-- `sensor.<name>_battery_power` — P_Akku (W)
-- `sensor.<name>_load_power` — P_Load (W)
-- `sensor.<name>_battery_soc` — SOC (%)
+- `sensor.<name>_grid_power` — Grid Power (W)
+- `sensor.<name>_pv_power` — Solar Generation (W)
+- `sensor.<name>_battery_power` — Battery Power (W)
+- `sensor.<name>_load_power` — House Consumption (W)
+- `sensor.<name>_battery_soc` — Battery State of Charge (%)
 - `sensor.<name>_energy_today` — daily PV accumulator (Wh)
+- `sensor.<name>_modbus_address` — Modbus Device Address
 - Per-phase power, current, voltage, power factor, and reactive power (when configured)
 
 Sensors for unconfigured fields are hidden automatically.
@@ -214,7 +222,7 @@ Sensors for unconfigured fields are hidden automatically.
 
 **Wattpilot load balancing shows "not available"**
 - Configure the per-phase sensors (Steps 4/5). Without them, load balancing falls back to equal phase splitting.
-- If you have a Fronius Smart Meter, also map `power_factor_phase_*` and `reactive_power_phase_*` — current alone at near-zero real power gives unstable power factor readings
+- If you have a Fronius Smart Meter, also map **Power Factor Phase A/B/C** and **Reactive Power Phase A/B/C** — current alone at near-zero real power gives unstable power factor readings
 
 **Sensors show unavailable**
 - Check the mapped entity IDs exist and have numeric states in Developer Tools → States

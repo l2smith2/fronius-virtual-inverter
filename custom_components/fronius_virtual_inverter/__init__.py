@@ -24,11 +24,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import (
+    CONF_MODBUS_ADDRESS,
     CONF_MODBUS_ENABLED,
     CONF_MODBUS_PORT,
     CONF_PORT,
     CONF_SYSTEM_NAME,
     CONF_UPDATE_INTERVAL,
+    DEFAULT_MODBUS_ADDRESS,
     DEFAULT_MODBUS_PORT,
     DEFAULT_PORT,
     DEFAULT_UPDATE_INTERVAL,
@@ -65,6 +67,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     modbus_enabled = bool(config.get(CONF_MODBUS_ENABLED, False))
     modbus_port = int(config.get(CONF_MODBUS_PORT, DEFAULT_MODBUS_PORT))
+    modbus_address = int(config.get(CONF_MODBUS_ADDRESS, DEFAULT_MODBUS_ADDRESS))
 
     # ── Coordinator ────────────────────────────────────────────────────────
     coordinator = FroniusVirtualInverterCoordinator(hass, config)
@@ -108,6 +111,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             coordinator=coordinator,
             port=modbus_port,
             serial=serial,
+            unit_id=modbus_address,
         )
         try:
             await modbus_server.start()
