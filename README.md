@@ -202,6 +202,8 @@ The integration exposes diagnostic entities in HA showing exactly what is being 
 - `sensor.<name>_load_power` — House Consumption (W)
 - `sensor.<name>_battery_soc` — Battery State of Charge (%)
 - `sensor.<name>_energy_today` — daily PV accumulator (Wh)
+- `sensor.<name>_grid_energy_imported` — cumulative grid import (Wh) — disabled by default; enable to add to Energy dashboard
+- `sensor.<name>_grid_energy_exported` — cumulative grid export (Wh) — disabled by default; enable to add to Energy dashboard
 - `sensor.<name>_modbus_address` — Modbus Device Address
 - Per-phase power, current, voltage, power factor, and reactive power (when configured)
 
