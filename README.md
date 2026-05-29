@@ -6,11 +6,27 @@ A Home Assistant custom integration that emulates a Fronius inverter and Smart M
 
 ---
 
+## ☕ Support
+
+If this integration saves you energy (and it will), consider buying me a coffee!
+
+[![Buy Me A Coffee](https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png)](https://www.buymeacoffee.com/l2smith2)
+
+---
+
 ## ⚠️ Vibe Coded
 
-This integration was entirely designed and built using AI-assisted development (Claude by Anthropic).
+This integration was entirely designed and built using AI-assisted development
+(Claude by Anthropic) across multiple chat and Claude Code sessions.
 It has been tested on real hardware but may contain bugs. Use at your own risk.
 Pull requests and issues welcome.
+
+### Energy footprint
+
+The AI compute used to build this integration consumed an estimated **1–15 kWh**
+of electricity (roughly equivalent to 5–60 minutes of EV charging at 11 kW).
+A Wattpilot configured with this integration in Eco mode will typically offset
+that energy cost within **the first sunny day** of PV surplus charging.
 
 ---
 
