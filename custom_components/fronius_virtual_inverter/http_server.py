@@ -36,11 +36,11 @@ async def _error_middleware(request: web.Request, handler) -> web.Response:
         return web.Response(status=500)
 
 
-def _make_head(timestamp: str | None = None) -> dict:
+def _make_head(timestamp: str | None = None, request_arguments: dict | None = None) -> dict:
     if timestamp is None:
         timestamp = datetime.now(timezone.utc).astimezone().isoformat()
     return {
-        "RequestArguments": {},
+        "RequestArguments": request_arguments if request_arguments is not None else {},
         "Status": {"Code": 0, "Reason": "", "UserMessage": ""},
         "Timestamp": timestamp,
     }
@@ -347,11 +347,20 @@ class FroniusSolarAPIServer:
             if v_c_raw is not None:
                 meter_data["Voltage_AC_Phase_3"] = round(v_c_raw, 1)
 
-        body_data: dict = {"0": meter_data}
+        scope = request.rel_url.query.get("Scope", "System")
+        device_id = request.rel_url.query.get("DeviceId", "0")
+        request_args = {
+            "DeviceClass": "Meter",
+            "DeviceId": int(device_id),
+            "Scope": scope,
+        }
+
+        # Device scope: flat response (one device); System scope: indexed by device address
+        body_data: dict = meter_data if scope == "Device" else {"0": meter_data}
 
         payload = {
             "Body": {"Data": body_data},
-            "Head": _make_head(),
+            "Head": _make_head(request_arguments=request_args),
         }
         return self._json_response(payload)
 
