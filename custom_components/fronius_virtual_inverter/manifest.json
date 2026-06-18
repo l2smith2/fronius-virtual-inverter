@@ -1,7 +1,7 @@
 {
   "domain": "fronius_virtual_inverter",
   "name": "Fronius Virtual Inverter",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "documentation": "https://github.com/l2smith2/fronius-virtual-inverter",
   "issue_tracker": "https://github.com/l2smith2/fronius-virtual-inverter/issues",
   "requirements": [],
