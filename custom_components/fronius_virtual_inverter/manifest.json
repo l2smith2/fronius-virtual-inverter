@@ -1,12 +1,12 @@
 {
   "domain": "fronius_virtual_inverter",
   "name": "Fronius Virtual Inverter",
-  "version": "1.1.0",
+  "codeowners": ["@l2smith2"],
+  "config_flow": true,
+  "dependencies": ["zeroconf"],
   "documentation": "https://github.com/l2smith2/fronius-virtual-inverter",
+  "iot_class": "local_push",
   "issue_tracker": "https://github.com/l2smith2/fronius-virtual-inverter/issues",
   "requirements": [],
-  "dependencies": ["zeroconf"],
-  "codeowners": ["@l2smith2"],
-  "iot_class": "local_push",
-  "config_flow": true
+  "version": "1.1.0"
 }
