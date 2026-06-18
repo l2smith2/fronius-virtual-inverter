@@ -109,7 +109,7 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 
 ## Known Issues
 - **Enabling a diagnostic entity triggers a coordinator refresh** — if that refresh fails, all sensors go unavailable. A full HA restart is required to recover. Root cause under investigation.
-- **Load balancing fallback mode** — in some conditions (suspected near-zero real power with high reactive current) the Wattpilot shows "Load Balancing not available". Surplus charging still works. Exact trigger unknown.
+- **~~Load balancing fallback mode~~** — **RESOLVED**. Root cause: `GetMeterRealtimeData.cgi?Scope=Device` was wrapping meter data in a `"0"` key. Real Fronius Device-scope response is flat — all fields go directly under `Body.Data`. System scope keeps the `"0"` wrapper (multiple devices indexed by ID), but Device scope must be flat. Confirmed by byte-for-byte comparison against a real Fronius SnapIN response. Fixed in "Fix critical bug: GetMeterRealtimeData Device scope must be flat, not wrapped in 0 key".
 
 ## Network topology (example)
 - HA host: 192.168.1.100 (your HA machine IP)
