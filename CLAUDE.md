@@ -137,7 +137,7 @@ https://github.com/l2smith2/fronius-virtual-inverter
 
 ## manifest.json
 - Version: `1.0.0`
-- Minimum HA version: `2026.3.0`
+- Minimum HA version: `2026.3.0` (noted in README only — `homeassistant` key is not valid in manifest.json for custom components)
 - `iot_class`: `local_push`
 - `config_flow`: true
 
