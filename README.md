@@ -44,15 +44,17 @@ The Wattpilot's Eco (PV surplus) charging mode requires a paired Fronius inverte
 
 ## Features
 
+Primarily a **Fronius inverter emulator** (HTTP Solar API v1) so the Wattpilot can discover and pair with it directly — with optional **Fronius Smart Meter IP emulation** (Modbus TCP) as a secondary feature for real Fronius hardware.
+
 - Wattpilot discovery and pairing via raw mDNS multicast (IPv4 + IPv6)
 - Fronius Solar API v1 HTTP server with all endpoints the Wattpilot polls
 - Per-phase load balancing data (`GetMeterRealtimeData`) for accurate phase-aware charging
-- Optional Modbus TCP Smart Meter IP emulation (SunSpec float model 213, configurable unit ID)
 - Flexible sensor mapping: signed sensors, separate import/export sensors, sign invert
 - Automatic unit conversion: kW→W, kWh→Wh, MW→W, MWh→Wh
 - Diagnostic HA sensors showing exactly what is being served to the Wattpilot
 - Unconfigured sensors hidden automatically (not shown as unavailable)
 - Human-readable display name shown in the Wattpilot pairing screen
+- Optional: Modbus TCP Smart Meter IP emulation (SunSpec float model 213) for real Fronius inverters
 
 ---
 
@@ -84,35 +86,65 @@ Then go to **Settings → Devices & Services → Add Integration** and search fo
 
 ## Configuration
 
-Setup is a guided multi-step flow:
+### Minimum setup (PV surplus charging only)
 
-**Step 1 — Virtual Inverter Setup**
-- **Inverter Name** — mDNS hostname (e.g. `my-inverter` → `my-inverter.local`). Lowercase letters and hyphens only.
-- **System Display Name** — shown in the Wattpilot pairing screen (e.g. `MyHome`). Falls back to inverter name if blank.
-- **HTTP Server Port** — port for the Solar API server (default: `80`). Use a port above 1024 if HA lacks permission to bind 80.
-- **Update Interval** — how often to refresh sensor values (default: 10 seconds).
+Just two sensors are required:
+- **Grid Power Sensor** — your grid import/export power
+- **Solar Power Sensor** — your PV generation power
 
-**Step 2 — Grid Configuration**
-- **Grid Power Sensor** — your electricity meter. Positive = importing from grid, negative = exporting.
-- **Use Separate Import/Export Sensors** — enable if your meter provides separate import and export readings (e.g. a Shelly 3EM)
-- **Invert Grid Sign** — enable if your sensor's sign is reversed relative to the convention above
-- **Grid Phase Configuration** — single or three-phase
-- **Grid Circuit Breaker Rating** — main breaker in amps; Wattpilot uses this for overload protection (default: 32A)
-- **Configure per-phase load balancing sensors** — if enabled, Steps 4 and 5 are shown
+That's it — the Wattpilot will discover the virtual inverter and PV surplus
+(Eco) charging will work.
 
-**Step 3 — PV & Battery**
-Map solar generation, battery charge/discharge, house load, and battery state of charge sensors. All fields are optional. The **Battery State of Charge** field accepts any HA sensor reporting 0–100% — it does not need to come from a Fronius battery. Mapping it unlocks the battery threshold controls in the Solar.wattpilot app (Charges from, Discharges until, Discharges until (boost)).
+### Recommended additions
 
-**Step 4 — Per-Phase Load Balancing — Phase A** *(optional)*
-Phase A power, current, voltage, power factor, and reactive power sensors. Only shown if you enabled **Configure per-phase load balancing sensors** in Step 2.
+- **Battery SOC Sensor** — unlocks PV Battery threshold controls in the
+  Wattpilot app (Charges from / Discharges until). Works with any battery
+  brand exposed in Home Assistant — Tesla Powerwall, BYD, Pylontech, etc.
+- **Battery Power Sensor** — reports battery charge/discharge power
+- **Grid Circuit Breaker Rating** — set this to your actual supply limit
+  (default 32A) so the Wattpilot never exceeds it even without load balancing
 
-**Step 5 — Per-Phase Load Balancing — Phases B & C** *(optional, three-phase only)*
-Phase B and C sensors. Only shown if three-phase is selected in Step 2.
+### Advanced: Per-phase load balancing
 
-**Step 6 — Advanced Options**
-- **Enable Smart Meter IP (Modbus TCP)** — emulate a Fronius Smart Meter IP so a real SnapIN inverter can use HA as its grid meter
-- **Modbus Port** — Modbus TCP port (default: 502; use 5020 if HA lacks permission to bind 502)
-- **Modbus Device Address** — Modbus unit ID (default: 240). Only change if running multiple instances.
+Without per-phase sensors, the Wattpilot charges safely up to your configured
+Circuit Breaker Rating but can't dynamically respond to other loads turning
+on/off in the house. Adding per-phase Current, Voltage, Power Factor, and
+Reactive Power sensors (from a smart meter like a Shelly 3EM or Fronius
+Smart Meter) unlocks full dynamic load balancing.
+
+### Optional: Smart Meter IP emulation (Modbus TCP)
+
+This integration primarily emulates a **Fronius inverter** so the Wattpilot
+can pair with it directly over HTTP. It can *also* emulate a **Fronius
+Smart Meter IP** over Modbus TCP (port 502) — useful if you have a real
+Fronius inverter (GEN24, SnapIN) that needs grid meter data sourced from
+Home Assistant sensors, independent of the Wattpilot pairing. Most users
+with no existing Fronius hardware won't need this.
+
+---
+
+### Setup flow reference
+
+**Step 1 — Basic Setup**
+Inverter Name, System Display Name, HTTP Server Port, Update Interval.
+
+**Step 2 — Required: Grid & Solar**
+- **Grid Power Sensor** *(required)* — positive = importing, negative = exporting
+- **Solar Power Sensor** *(required)* — PV generation
+- Grid Phase Configuration, Circuit Breaker Rating
+- **Enable per-phase load balancing sensors** — optional toggle; if enabled, Steps 4/5 are shown
+
+**Step 3 — Optional: Battery & Load**
+Battery SOC, Battery Power, House Consumption. All optional — leave blank if not available.
+
+**Step 4 — Optional: Load Balancing — Phase A** *(shown only if toggled in Step 2)*
+Phase A power, current, voltage, power factor, reactive power.
+
+**Step 5 — Optional: Load Balancing — Phases B & C** *(three-phase only)*
+Phase B and C sensors.
+
+**Step 6 — Optional: Smart Meter IP Emulation (Modbus TCP)**
+Enable Modbus, configure port and unit ID.
 
 All steps are available again under **Settings → Devices & Services → Configure**.
 
@@ -219,11 +251,6 @@ When enabling a previously-disabled diagnostic sensor (e.g. per-phase sensors),
 all integration sensors may become unavailable. This is a known issue
 with the current coordinator implementation. A full Home Assistant restart
 resolves it. This will be fixed in a future release.
-
-### Load balancing fallback mode
-In some conditions the Wattpilot may show "Load Balancing not available — charging
-in fallback mode". Surplus charging still works correctly in fallback mode.
-The exact sensor or data condition that triggers this is still under investigation.
 
 ### "P_Grid is null" error when switching pairing
 If the Wattpilot is currently paired with another inverter (e.g. a real Fronius

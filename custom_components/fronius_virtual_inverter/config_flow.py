@@ -111,6 +111,8 @@ def _grid_schema(current: dict) -> vol.Schema:
         _opt(CONF_P_GRID_SENSOR_POS, current): selector.EntitySelector(_ES),
         _opt(CONF_P_GRID_SENSOR_NEG, current): selector.EntitySelector(_ES),
         vol.Optional(CONF_P_GRID_INVERT, default=current.get(CONF_P_GRID_INVERT, False)): selector.BooleanSelector(),
+        _opt(CONF_P_PV_SENSOR, current): selector.EntitySelector(_ES),
+        vol.Optional(CONF_P_PV_INVERT, default=current.get(CONF_P_PV_INVERT, False)): selector.BooleanSelector(),
         vol.Optional(CONF_GRID_PHASES, default=current.get(CONF_GRID_PHASES, "1")): selector.SelectSelector(
             selector.SelectSelectorConfig(options=[
                 {"value": "1", "label": "Single phase (1)"},
@@ -126,8 +128,6 @@ def _grid_schema(current: dict) -> vol.Schema:
 
 def _generation_schema(current: dict) -> vol.Schema:
     return vol.Schema({
-        _opt(CONF_P_PV_SENSOR, current): selector.EntitySelector(_ES),
-        vol.Optional(CONF_P_PV_INVERT, default=current.get(CONF_P_PV_INVERT, False)): selector.BooleanSelector(),
         vol.Optional(CONF_P_AKKU_DUAL_MODE, default=current.get(CONF_P_AKKU_DUAL_MODE, False)): selector.BooleanSelector(),
         _opt(CONF_P_AKKU_SENSOR, current): selector.EntitySelector(_ES),
         _opt(CONF_P_AKKU_SENSOR_POS, current): selector.EntitySelector(_ES),
