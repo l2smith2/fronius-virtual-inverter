@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(cp -r /homeassistant/fronius-dev/custom_components/fronius_virtual_inverter/. /homeassistant/custom_components/fronius_virtual_inverter/)",
+      "Bash(ha core *)"
+    ]
+  }
+}

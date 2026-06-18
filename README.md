@@ -225,6 +225,14 @@ In some conditions the Wattpilot may show "Load Balancing not available — char
 in fallback mode". Surplus charging still works correctly in fallback mode.
 The exact sensor or data condition that triggers this is still under investigation.
 
+### "P_Grid is null" error when switching pairing
+If the Wattpilot is currently paired with another inverter (e.g. a real Fronius
+SnapIN), attempting to pair with the virtual inverter while the old pairing is
+still active may show "An error occurred — P_Grid is null".
+**Fix:** Fully unpair from the existing inverter first, wait a few seconds,
+then pair with the virtual inverter. This is a Wattpilot app limitation, not
+an issue with the virtual inverter itself.
+
 ---
 
 ## Troubleshooting
