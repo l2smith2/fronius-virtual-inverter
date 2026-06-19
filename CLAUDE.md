@@ -84,6 +84,9 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 - `PowerFactor`: from sensor → derived from P/(I×V) → sign-based fallback (1.0 import, -1.0 export)
 - Energy accumulators (`EnergyReal_WAC_*`) tracked in coordinator as running totals
 - For single-phase: only Phase_1 fields included; for three-phase: Phase_1/2/3 all included
+- **Device scope (`Scope=Device`)**: `Body.Data` is the flat meter dict — confirmed by byte-for-byte comparison against a real SnapIN response. This was the root cause of load balancing fallback mode.
+- **System scope (`Scope=System`)**: `Body.Data` is `{"0": meter_dict}` — indexed by device address (multiple devices)
+- `Head.RequestArguments` populated from actual query params: `{"DeviceClass": "Meter", "DeviceId": int, "Scope": str}`
 
 ## Confirmed working ✓
 - Wattpilot discovery and pairing via mDNS ✓
@@ -95,9 +98,11 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 - Sensor unit auto-conversion: kW→W, kWh→Wh, MW→W, MWh→Wh ✓
 - Per-phase data in GetMeterRealtimeData for load balancing ✓
 - system_name used as serial for human-readable display name ✓
-- GetMeterRealtimeData.cgi (Device scope) served correctly — what Wattpilot polls ✓
+- GetMeterRealtimeData.cgi (Device scope) returns flat Body.Data — confirmed against real SnapIN ✓
+- GetMeterRealtimeData Head.RequestArguments populated with actual query params ✓
 - Per-phase voltage, power factor, reactive power sensors supported ✓
-- Config flow restructured into 6 steps: user → grid → generation → advanced (Phase A) → three_phase (Phase B/C) → modbus ✓
+- Config flow: 6 steps — user → grid (Required: Grid & Solar, includes P_PV) → generation (Optional: Battery & Load) → advanced (Optional: Load Balancing Phase A) → three_phase (Phase B/C) → modbus (Optional: Smart Meter IP) ✓
+- P_PV sensor in Step 2 alongside P_Grid (both marked Required in UI) ✓
 - Per-phase diagnostic sensors disabled by default (entity_registry_enabled_default=False) ✓
 - Unconfigured diagnostic sensors hidden via available property (checks last_update_success + None) ✓
 - Grid energy import/export accumulator sensors added (TOTAL_INCREASING, disabled by default) ✓
@@ -106,10 +111,11 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 - mDNS announce loop: per-iteration try/except with 5s retry on error ✓
 - Modbus _handle_client: per-iteration try/except; _read_registers failure returns exception code 0x04 ✓
 - HTTP server: aiohttp error middleware logs and recovers from handler exceptions ✓
+- GitHub Actions CI: HACS validation + hassfest on push/PR/daily schedule ✓
 
 ## Known Issues
 - **Enabling a diagnostic entity triggers a coordinator refresh** — if that refresh fails, all sensors go unavailable. A full HA restart is required to recover. Root cause under investigation.
-- **~~Load balancing fallback mode~~** — **RESOLVED**. Root cause: `GetMeterRealtimeData.cgi?Scope=Device` was wrapping meter data in a `"0"` key. Real Fronius Device-scope response is flat — all fields go directly under `Body.Data`. System scope keeps the `"0"` wrapper (multiple devices indexed by ID), but Device scope must be flat. Confirmed by byte-for-byte comparison against a real Fronius SnapIN response. Fixed in "Fix critical bug: GetMeterRealtimeData Device scope must be flat, not wrapped in 0 key".
+- **"P_Grid is null" when switching pairing** — if the Wattpilot is currently paired with another inverter, pairing with the virtual inverter while the old pairing is still active may show this error. Fix: fully unpair from the existing inverter first. Wattpilot app limitation.
 
 ## Network topology (example)
 - HA host: 192.168.1.100 (your HA machine IP)
@@ -136,10 +142,12 @@ https://github.com/l2smith2/fronius-virtual-inverter
 - Symlinks do NOT work reliably for HA custom components — always use real directory copy
 
 ## manifest.json
-- Version: `1.0.0`
+- Version: `1.1.0`
 - Minimum HA version: `2026.3.0` (noted in README only — `homeassistant` key is not valid in manifest.json for custom components)
 - `iot_class`: `local_push`
 - `config_flow`: true
+- `dependencies`: `["zeroconf"]` — required because `mdns_announcer.py` calls `async_get_instance` from `homeassistant.components.zeroconf`
+- Key ordering required by hassfest: `domain`, `name`, then all remaining keys alphabetically
 
 ## Diagnostic sensors (sensor.py)
 - 6 core sensors always enabled: Grid Power, PV Power, Battery Power, Load Power, Battery SOC, Energy Today
