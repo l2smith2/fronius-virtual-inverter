@@ -68,19 +68,32 @@ Primarily a **Fronius inverter emulator** (HTTP Solar API v1) so the Wattpilot c
 
 ## Installation
 
-### HACS (recommended)
+### HACS (Recommended)
 
-1. In HACS, go to **Integrations → ⋮ → Custom repositories**
-2. Add `https://github.com/l2smith2/fronius-virtual-inverter` as an **Integration**
-3. Search for "Fronius Virtual Inverter" and install
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=l2smith2&repository=fronius-virtual-inverter&category=integration)
+
+Or manually:
+1. Open HACS in Home Assistant
+2. Go to **Integrations**
+3. Click the **⋮** menu (top right) → **Custom repositories**
+4. Add `https://github.com/l2smith2/fronius-virtual-inverter` with category **Integration**
+5. Find **Fronius Virtual Inverter** in the HACS integrations list and click **Download**
+6. Restart Home Assistant
+
+*Note: This integration is pending approval for the official HACS default store. Once approved, it will be directly searchable in HACS without adding a custom repository.*
+
+### Manual Installation
+
+1. Download the [latest release](https://github.com/l2smith2/fronius-virtual-inverter/releases/latest)
+2. Extract the `custom_components/fronius_virtual_inverter` folder
+3. Copy it to your Home Assistant `config/custom_components/` directory
 4. Restart Home Assistant
 
-### Manual
+### Setup
 
-1. Copy the `custom_components/fronius_virtual_inverter` folder to `/config/custom_components/`
-2. Restart Home Assistant
-
-Then go to **Settings → Devices & Services → Add Integration** and search for **Fronius Virtual Inverter**.
+1. Go to **Settings → Devices & Services → Add Integration**
+2. Search for **Fronius Virtual Inverter**
+3. Follow the configuration steps
 
 ---
 

@@ -9,7 +9,8 @@
       "Bash(xargs ls -la)",
       "Bash(git -C /homeassistant/fronius-dev push)",
       "Bash(git -C /homeassistant/fronius-dev add custom_components/fronius_virtual_inverter/manifest.json)",
-      "Bash(git -C /homeassistant/fronius-dev commit -m ' *)"
+      "Bash(git -C /homeassistant/fronius-dev commit -m ' *)",
+      "Bash(git -C /homeassistant/fronius-dev add CLAUDE.md)"
     ]
   }
 }
