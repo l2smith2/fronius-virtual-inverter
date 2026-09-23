@@ -1,4 +1,4 @@
-"""Sensor platform for Fronius Virtual Inverter — diagnostic entities."""
+"""Sensor platform — diagnostic entities mirroring what is served."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,63 +10,69 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfEnergy, UnitOfPower, PERCENTAGE
+from homeassistant.const import (
+    PERCENTAGE,
+    EntityCategory,
+    UnitOfElectricCurrent,
+    UnitOfElectricPotential,
+    UnitOfEnergy,
+    UnitOfPower,
+    UnitOfReactivePower,
+)
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import EntityCategory
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.loader import async_get_integration
 
-from .const import DOMAIN
+from . import FroniusConfigEntry
+from .const import DOMAIN, PHASES
 from .coordinator import FroniusVirtualInverterCoordinator
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class FroniusSensorEntityDescription(SensorEntityDescription):
     """Describe a Fronius virtual inverter sensor."""
-    data_key: str = ""
 
+    data_key: str
+    meter_name: str | None = None  # set = also created for standalone meters, with this name
+
+
+_POWER: dict[str, Any] = {
+    "device_class": SensorDeviceClass.POWER,
+    "state_class": SensorStateClass.MEASUREMENT,
+    "native_unit_of_measurement": UnitOfPower.WATT,
+    "entity_category": EntityCategory.DIAGNOSTIC,
+}
+_ENERGY: dict[str, Any] = {
+    "device_class": SensorDeviceClass.ENERGY,
+    "state_class": SensorStateClass.TOTAL_INCREASING,
+    "native_unit_of_measurement": UnitOfEnergy.WATT_HOUR,
+    "entity_category": EntityCategory.DIAGNOSTIC,
+}
+
+# (key prefix, data prefix, name, device class, unit, icon) — one sensor per phase
+_PHASE_SENSORS = (
+    ("p_grid", "P_Grid", "Grid Power", SensorDeviceClass.POWER, UnitOfPower.WATT, "mdi:transmission-tower"),
+    ("i_grid", "I_Grid", "Grid Current", SensorDeviceClass.CURRENT, UnitOfElectricCurrent.AMPERE, "mdi:current-ac"),
+    ("v_grid", "V_Grid", "Grid Voltage", SensorDeviceClass.VOLTAGE, UnitOfElectricPotential.VOLT, "mdi:lightning-bolt"),
+    ("pf_grid", "PF_Grid", "Grid Power Factor", SensorDeviceClass.POWER_FACTOR, None, "mdi:angle-acute"),
+    ("q_grid", "Q_Grid", "Grid Reactive Power", SensorDeviceClass.REACTIVE_POWER, UnitOfReactivePower.VOLT_AMPERE_REACTIVE, "mdi:sine-wave"),
+)
 
 SENSOR_DESCRIPTIONS: tuple[FroniusSensorEntityDescription, ...] = (
     FroniusSensorEntityDescription(
-        key="p_grid",
-        data_key="P_Grid",
-        name="Grid Power",
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfPower.WATT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        icon="mdi:transmission-tower",
+        key="p_grid", data_key="P_Grid", name="Grid Power", meter_name="Meter Power",
+        icon="mdi:transmission-tower", **_POWER,
     ),
     FroniusSensorEntityDescription(
-        key="p_pv",
-        data_key="P_PV",
-        name="PV Power",
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfPower.WATT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        icon="mdi:solar-power",
+        key="p_pv", data_key="P_PV", name="PV Power", icon="mdi:solar-power", **_POWER
     ),
     FroniusSensorEntityDescription(
-        key="p_akku",
-        data_key="P_Akku",
-        name="Battery Power",
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfPower.WATT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        icon="mdi:battery-charging",
+        key="p_akku", data_key="P_Akku", name="Battery Power", icon="mdi:battery-charging", **_POWER
     ),
     FroniusSensorEntityDescription(
-        key="p_load",
-        data_key="P_Load",
-        name="Load Power",
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfPower.WATT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        icon="mdi:home-lightning-bolt",
+        key="p_load", data_key="P_Load", name="Load Power", icon="mdi:home-lightning-bolt", **_POWER
     ),
     FroniusSensorEntityDescription(
         key="soc",
@@ -79,209 +85,46 @@ SENSOR_DESCRIPTIONS: tuple[FroniusSensorEntityDescription, ...] = (
         icon="mdi:battery",
     ),
     FroniusSensorEntityDescription(
-        key="e_day",
-        data_key="E_Day",
-        name="Energy Today",
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        icon="mdi:solar-power-variant",
+        key="e_day", data_key="E_Day", name="Energy Today", icon="mdi:solar-power-variant", **_ENERGY
     ),
     FroniusSensorEntityDescription(
         key="grid_energy_imported",
         data_key="_tot_wh_imp",
         name="Grid Energy Imported",
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
-        entity_category=EntityCategory.DIAGNOSTIC,
+        meter_name="Energy Imported",
         entity_registry_enabled_default=False,
         icon="mdi:home-import-outline",
+        **_ENERGY,
     ),
     FroniusSensorEntityDescription(
         key="grid_energy_exported",
         data_key="_tot_wh_exp",
         name="Grid Energy Exported",
-        device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
-        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
-        entity_category=EntityCategory.DIAGNOSTIC,
+        meter_name="Energy Exported",
         entity_registry_enabled_default=False,
         icon="mdi:home-export-outline",
+        **_ENERGY,
     ),
-    FroniusSensorEntityDescription(
-        key="p_grid_a",
-        data_key="P_Grid_A",
-        name="Grid Power Phase A",
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfPower.WATT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        icon="mdi:transmission-tower",
-    ),
-    FroniusSensorEntityDescription(
-        key="p_grid_b",
-        data_key="P_Grid_B",
-        name="Grid Power Phase B",
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfPower.WATT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        icon="mdi:transmission-tower",
-    ),
-    FroniusSensorEntityDescription(
-        key="p_grid_c",
-        data_key="P_Grid_C",
-        name="Grid Power Phase C",
-        device_class=SensorDeviceClass.POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfPower.WATT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        icon="mdi:transmission-tower",
-    ),
-    FroniusSensorEntityDescription(
-        key="i_grid_a",
-        data_key="I_Grid_A",
-        name="Grid Current Phase A",
-        device_class=SensorDeviceClass.CURRENT,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement="A",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        icon="mdi:current-ac",
-    ),
-    FroniusSensorEntityDescription(
-        key="i_grid_b",
-        data_key="I_Grid_B",
-        name="Grid Current Phase B",
-        device_class=SensorDeviceClass.CURRENT,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement="A",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        icon="mdi:current-ac",
-    ),
-    FroniusSensorEntityDescription(
-        key="i_grid_c",
-        data_key="I_Grid_C",
-        name="Grid Current Phase C",
-        device_class=SensorDeviceClass.CURRENT,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement="A",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        icon="mdi:current-ac",
-    ),
-    FroniusSensorEntityDescription(
-        key="v_grid_a",
-        data_key="V_Grid_A",
-        name="Grid Voltage Phase A",
-        device_class=SensorDeviceClass.VOLTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement="V",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        icon="mdi:lightning-bolt",
-    ),
-    FroniusSensorEntityDescription(
-        key="v_grid_b",
-        data_key="V_Grid_B",
-        name="Grid Voltage Phase B",
-        device_class=SensorDeviceClass.VOLTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement="V",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        icon="mdi:lightning-bolt",
-    ),
-    FroniusSensorEntityDescription(
-        key="v_grid_c",
-        data_key="V_Grid_C",
-        name="Grid Voltage Phase C",
-        device_class=SensorDeviceClass.VOLTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement="V",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        icon="mdi:lightning-bolt",
-    ),
-    FroniusSensorEntityDescription(
-        key="pf_grid_a",
-        data_key="PF_Grid_A",
-        name="Grid Power Factor Phase A",
-        device_class=SensorDeviceClass.POWER_FACTOR,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=None,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        icon="mdi:angle-acute",
-    ),
-    FroniusSensorEntityDescription(
-        key="pf_grid_b",
-        data_key="PF_Grid_B",
-        name="Grid Power Factor Phase B",
-        device_class=SensorDeviceClass.POWER_FACTOR,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=None,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        icon="mdi:angle-acute",
-    ),
-    FroniusSensorEntityDescription(
-        key="pf_grid_c",
-        data_key="PF_Grid_C",
-        name="Grid Power Factor Phase C",
-        device_class=SensorDeviceClass.POWER_FACTOR,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=None,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        icon="mdi:angle-acute",
-    ),
-    FroniusSensorEntityDescription(
-        key="q_grid_a",
-        data_key="Q_Grid_A",
-        name="Grid Reactive Power Phase A",
-        device_class=SensorDeviceClass.REACTIVE_POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement="var",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        icon="mdi:sine-wave",
-    ),
-    FroniusSensorEntityDescription(
-        key="q_grid_b",
-        data_key="Q_Grid_B",
-        name="Grid Reactive Power Phase B",
-        device_class=SensorDeviceClass.REACTIVE_POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement="var",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        icon="mdi:sine-wave",
-    ),
-    FroniusSensorEntityDescription(
-        key="q_grid_c",
-        data_key="Q_Grid_C",
-        name="Grid Reactive Power Phase C",
-        device_class=SensorDeviceClass.REACTIVE_POWER,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement="var",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        icon="mdi:sine-wave",
+    *(
+        FroniusSensorEntityDescription(
+            key=f"{key}_{phase}",
+            data_key=f"{data_prefix}_{phase.upper()}",
+            name=f"{name} Phase {phase.upper()}",
+            device_class=device_class,
+            state_class=SensorStateClass.MEASUREMENT,
+            native_unit_of_measurement=unit,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            entity_registry_enabled_default=False,
+            icon=icon,
+        )
+        for key, data_prefix, name, device_class, unit, icon in _PHASE_SENSORS
+        for phase in PHASES
     ),
     FroniusSensorEntityDescription(
         key="modbus_address",
         data_key="modbus_address",
         name="Modbus Device Address",
-        device_class=None,
-        state_class=None,
-        native_unit_of_measurement=None,
+        meter_name="Modbus Device Address",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         icon="mdi:ethernet",
@@ -291,65 +134,63 @@ SENSOR_DESCRIPTIONS: tuple[FroniusSensorEntityDescription, ...] = (
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: FroniusConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up Fronius Virtual Inverter sensors."""
-    coordinator: FroniusVirtualInverterCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
-
-    entities = [
-        FroniusVirtualSensor(coordinator, entry, description)
+    """Set up diagnostic sensors."""
+    coordinator = entry.runtime_data
+    integration = await async_get_integration(hass, DOMAIN)
+    device_info = DeviceInfo(
+        identifiers={(DOMAIN, entry.entry_id)},
+        name=entry.title,
+        manufacturer="Fronius (Virtual)",
+        model="Smart Meter IP (Virtual)" if coordinator.is_meter else "GEN24 Virtual Inverter",
+        sw_version=str(integration.version),
+    )
+    async_add_entities(
+        FroniusVirtualSensor(coordinator, entry, description, device_info)
         for description in SENSOR_DESCRIPTIONS
-    ]
-    async_add_entities(entities)
+        if description.meter_name or not coordinator.is_meter
+    )
 
 
-class FroniusVirtualSensor(CoordinatorEntity, SensorEntity):
-    """A diagnostic sensor that mirrors data being served to the Wattpilot."""
+class FroniusVirtualSensor(CoordinatorEntity[FroniusVirtualInverterCoordinator], SensorEntity):
+    """A diagnostic sensor mirroring a value being served."""
 
     entity_description: FroniusSensorEntityDescription
+    _attr_has_entity_name = True
+    # Changes every update — keep it out of the recorder database
+    _unrecorded_attributes = frozenset({"last_updated"})
 
     def __init__(
         self,
         coordinator: FroniusVirtualInverterCoordinator,
-        entry: ConfigEntry,
+        entry: FroniusConfigEntry,
         description: FroniusSensorEntityDescription,
+        device_info: DeviceInfo,
     ) -> None:
         super().__init__(coordinator)
         self.entity_description = description
-        self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_{description.key}"
-        self._attr_name = f"{entry.title} {description.name}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, entry.entry_id)},
-            "name": entry.title,
-            "manufacturer": "Fronius (Virtual)",
-            "model": "GEN24 Virtual Inverter",
-            "sw_version": "1.0.0",
-        }
+        self._attr_device_info = device_info
+        if coordinator.is_meter:
+            self._attr_name = description.meter_name
+
+    @property
+    def _value(self) -> float | None:
+        return (self.coordinator.data or {}).get(self.entity_description.data_key)
 
     @property
     def available(self) -> bool:
-        if not self.coordinator.last_update_success:
-            return False
-        if self.coordinator.data is None:
-            return False
-        val = self.coordinator.data.get(self.entity_description.data_key)
-        return val is not None
+        """Unconfigured values are hidden rather than shown as 0."""
+        return super().available and self._value is not None
 
     @property
     def native_value(self) -> float | None:
-        if self.coordinator.data is None:
-            return None
-        val = self.coordinator.data.get(self.entity_description.data_key)
-        if val is None:
-            return None
-        return round(val, 2)
+        val = self._value
+        return None if val is None else round(val, 2)
 
     @property
-    def extra_state_attributes(self) -> dict:
-        try:
-            last_refresh = getattr(self.coordinator, '_last_refresh', None)
-            return {"last_updated": last_refresh.isoformat() if last_refresh else None}
-        except Exception:
-            return {}
+    def extra_state_attributes(self) -> dict[str, Any]:
+        last = self.coordinator.last_refresh
+        return {"last_updated": last.isoformat() if last else None}

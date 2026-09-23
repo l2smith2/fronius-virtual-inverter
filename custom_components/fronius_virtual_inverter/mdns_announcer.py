@@ -151,14 +151,15 @@ def _build_packet(
     return header + ptr + srv + txt_rr + addr_rr
 
 
-# ── Raw mDNS announcer (send-only, ephemeral port) ───────────────────────────
+# ── Raw mDNS announcer (send-only, source port 5353) ─────────────────────────
 
 class RawMDNSAnnouncer:
     """Announces Fronius-SE service types via raw UDP multicast on IPv4 and IPv6.
 
     Bypasses zeroconf's 15-byte label limit by building DNS packets directly.
-    Uses ephemeral source ports so it never conflicts with HA's zeroconf
-    daemon on port 5353.  Send-only: no receive/query-response support.
+    Sends from UDP port 5353 (the Wattpilot drops mDNS responses from any other
+    source port), shared with HA's zeroconf via SO_REUSEPORT. Send-only: the
+    announcement is repeated every second instead of answering queries.
     """
 
     def __init__(self, name: str, port: int, serial: str, system_name: str | None = None) -> None:
@@ -241,29 +242,34 @@ class RawMDNSAnnouncer:
             )
 
         # ── IPv4 socket ───────────────────────────────────────────────────
-        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        self._sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
-        self._sock.setsockopt(
-            socket.IPPROTO_IP,
-            socket.IP_MULTICAST_IF,
-            socket.inet_aton(local_ip),
-        )
-        self._sock.bind((local_ip, MDNS_PORT))
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(local_ip))
+            sock.bind((local_ip, MDNS_PORT))
+        except OSError:
+            sock.close()
+            raise
+        self._sock = sock
 
         # ── IPv6 socket ───────────────────────────────────────────────────
+        sock6 = None
         try:
-            self._sock6 = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-            self._sock6.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self._sock6.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            self._sock6.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 255)
-            self._sock6.bind(("::", MDNS_PORT))
+            sock6 = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+            sock6.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock6.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            sock6.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 255)
+            sock6.bind(("::", MDNS_PORT))
+            self._sock6 = sock6
             _LOGGER.info(
                 "RawMDNSAnnouncer IPv6 bound on [::]:5353, iface=%s", self._iface
             )
         except Exception as err:
             _LOGGER.warning("RawMDNSAnnouncer IPv6 socket failed (non-fatal): %s", err)
+            if sock6 is not None:
+                sock6.close()
             self._sock6 = None
 
         self._task = asyncio.create_task(self._announce_loop())

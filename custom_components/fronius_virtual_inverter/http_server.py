@@ -1,7 +1,6 @@
 """Fronius Solar API v1 HTTP server."""
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -15,14 +14,16 @@ from .const import (
     API_INVERTER_REALTIME,
     API_LOGGER_INFO,
     API_METER_REALTIME,
+    API_METER_REALTIME_CGI,
     API_POWER_FLOW,
     API_STORAGE_REALTIME,
     API_VERSION,
     FRONIUS_DEVICE_TYPE,
 )
+from .meter import read_meter
 
 if TYPE_CHECKING:
-    from . import FroniusVirtualInverterCoordinator
+    from .coordinator import FroniusVirtualInverterCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,13 +55,11 @@ class FroniusSolarAPIServer:
         coordinator: "FroniusVirtualInverterCoordinator",
         port: int,
         serial: str,
-        inverter_name: str,
         system_name: str,
     ) -> None:
         self._coordinator = coordinator
         self._port = port
         self._serial = serial
-        self._inverter_name = inverter_name
         self._system_name = system_name
         self._app = web.Application(middlewares=[_error_middleware])
         self._runner: web.AppRunner | None = None
@@ -74,7 +73,7 @@ class FroniusSolarAPIServer:
         self._app.router.add_get(API_INVERTER_INFO, self._handle_inverter_info)
         self._app.router.add_get(API_INVERTER_REALTIME, self._handle_inverter_realtime)
         self._app.router.add_get(API_METER_REALTIME, self._handle_meter_realtime)
-        self._app.router.add_get("/solar_api/v1/GetMeterRealtimeData.cgi", self._handle_meter_realtime)
+        self._app.router.add_get(API_METER_REALTIME_CGI, self._handle_meter_realtime)
         self._app.router.add_get(API_STORAGE_REALTIME, self._handle_storage_realtime)
         self._app.router.add_get(API_LOGGER_INFO, self._handle_logger_info)
         # Catch-all for any other Solar API paths
@@ -82,7 +81,7 @@ class FroniusSolarAPIServer:
 
     async def start(self) -> None:
         """Start the HTTP server."""
-        self._runner = web.AppRunner(self._app, access_log=None)
+        self._runner = web.AppRunner(self._app, access_log=None, shutdown_timeout=5)
         await self._runner.setup()
         self._site = web.TCPSite(self._runner, "0.0.0.0", self._port)
         await self._site.start()
@@ -92,8 +91,6 @@ class FroniusSolarAPIServer:
 
     async def stop(self) -> None:
         """Stop the HTTP server."""
-        if self._site:
-            await self._site.stop()
         if self._runner:
             await self._runner.cleanup()
         _LOGGER.info("Fronius Virtual Inverter HTTP server stopped")
@@ -156,17 +153,17 @@ class FroniusSolarAPIServer:
         if p_load is not None:
             site_block["P_Load"] = round(p_load, 1)
 
-        # Autonomy & self-consumption
-        if p_pv is not None and p_load is not None and p_load < 0:
-            load_abs = abs(p_load)
-            if load_abs > 0:
-                self_consumption = min(p_pv / load_abs * 100, 100.0)
-                site_block["rel_SelfConsumption"] = round(self_consumption, 1)
-            if p_grid is not None and p_grid <= 0:
-                site_block["rel_Autonomy"] = 100.0
-            elif p_grid is not None and load_abs > 0:
-                autonomy = max(0.0, (1 - p_grid / load_abs) * 100)
-                site_block["rel_Autonomy"] = round(autonomy, 1)
+        # Fronius definitions: autonomy = share of load not imported;
+        # self-consumption = share of PV not exported
+        if p_grid is not None:
+            if p_load is not None and p_load < 0:
+                site_block["rel_Autonomy"] = (
+                    100.0 if p_grid <= 0 else round(max(0.0, (1 + p_grid / p_load) * 100), 1)
+                )
+            if p_pv is not None and p_pv > 0:
+                site_block["rel_SelfConsumption"] = (
+                    100.0 if p_grid >= 0 else round(max(0.0, (1 + p_grid / p_pv) * 100), 1)
+                )
 
         payload = {
             "Body": {
@@ -233,119 +230,63 @@ class FroniusSolarAPIServer:
 
     async def _handle_meter_realtime(self, request: web.Request) -> web.Response:
         """Return grid meter data with per-phase breakdown for load balancing."""
-        data = self._coordinator.data
-        p_grid = data.get("P_Grid", 0.0) or 0.0
-        phases = int(data.get("grid_phases", 1))
-        tot_wh_imp = data.get("_tot_wh_imp", 0.0)
-        tot_wh_exp = data.get("_tot_wh_exp", 0.0)
+        m = read_meter(self._coordinator.data)
+        ph1 = m.phases[0]
 
-        p_a = data.get("P_Grid_A")
-        p_b = data.get("P_Grid_B")
-        p_c = data.get("P_Grid_C")
-        i_a = data.get("I_Grid_A")
-        i_b = data.get("I_Grid_B")
-        i_c = data.get("I_Grid_C")
-        # None means no voltage sensor configured; use 240V only for current derivation
-        v_a_raw: float | None = data.get("V_Grid_A")
-        v_b_raw: float | None = data.get("V_Grid_B")
-        v_c_raw: float | None = data.get("V_Grid_C")
-        v_a: float = v_a_raw or 240.0
-        v_b: float = v_b_raw or 240.0
-        v_c: float = v_c_raw or 240.0
-
-        if p_a is None and p_b is None and p_c is None:
-            if phases == 3:
-                p_a = p_b = p_c = p_grid / 3.0
-            else:
-                p_a, p_b, p_c = p_grid, 0.0, 0.0
-        else:
-            p_a = p_a or 0.0
-            p_b = p_b or 0.0
-            p_c = p_c or 0.0
-
-        i_a = i_a if i_a is not None else p_a / v_a
-        i_b = i_b if i_b is not None else p_b / v_b
-        i_c = i_c if i_c is not None else p_c / v_c
-
-        pf_sensor_a = data.get("PF_Grid_A")
-        pf_sensor_b = data.get("PF_Grid_B")
-        pf_sensor_c = data.get("PF_Grid_C")
-        q_a = data.get("Q_Grid_A") or 0.0
-        q_b = data.get("Q_Grid_B") or 0.0
-        q_c = data.get("Q_Grid_C") or 0.0
-
-        def _derive_pf(p: float, s: float, sensor: float | None) -> float:
-            if sensor is not None:
-                return sensor
-            return round(p / s, 3) if s > 0 else (1.0 if p >= 0 else -1.0)
-
-        # Apparent power via I*V — matches real meter measurement; credible when P=0 but I/Q non-zero
-        s_a = i_a * v_a
-        s_b = i_b * v_b
-        s_c = i_c * v_c
-        s_sum = s_a if phases == 1 else s_a + s_b + s_c
-        q_sum = q_a + q_b + q_c
-        pf_a = _derive_pf(p_a, s_a, pf_sensor_a)
-        pf_b = _derive_pf(p_b, s_b, pf_sensor_b)
-        pf_c = _derive_pf(p_c, s_c, pf_sensor_c)
-        pf_sum = _derive_pf(p_grid, s_sum, None)
-
-        timestamp = int(datetime.now(timezone.utc).timestamp())
-
-        meter_data: dict = {
+        # Field order matches the response the Wattpilot was validated against
+        meter_data: dict[str, Any] = {
             "Details": {
                 "Manufacturer": "Fronius",
                 "Model": "Smart Meter TS 65A-3",
                 "Serial": self._serial,
             },
             "Enable": 1,
-            "TimeStamp": timestamp,
+            "TimeStamp": int(datetime.now(timezone.utc).timestamp()),
             "Meter_Location_Current": 0,
             "Visible": 1,
             "Frequency_Phase_Average": 50.0,
-            "PowerReal_P_Sum": round(p_grid, 1),
-            "PowerReactive_Q_Sum": round(q_sum, 1),
-            "PowerApparent_S_Sum": round(s_sum, 1),
-            "PowerFactor_Sum": pf_sum,
-            "Current_AC_Sum": round(i_a if phases == 1 else i_a + i_b + i_c, 2),
-            "EnergyReal_WAC_Minus_Absolute": round(tot_wh_exp, 1),
-            "EnergyReal_WAC_Plus_Absolute": round(tot_wh_imp, 1),
-            "EnergyReal_WAC_Sum_Consumed": round(tot_wh_imp, 1),
-            "EnergyReal_WAC_Sum_Produced": round(tot_wh_exp, 1),
+            "PowerReal_P_Sum": round(m.p, 1),
+            "PowerReactive_Q_Sum": round(m.q, 1),
+            "PowerApparent_S_Sum": round(m.s, 1),
+            "PowerFactor_Sum": m.pf,
+            "Current_AC_Sum": round(m.i, 2),
+            "EnergyReal_WAC_Minus_Absolute": round(m.wh_exp, 1),
+            "EnergyReal_WAC_Plus_Absolute": round(m.wh_imp, 1),
+            "EnergyReal_WAC_Sum_Consumed": round(m.wh_imp, 1),
+            "EnergyReal_WAC_Sum_Produced": round(m.wh_exp, 1),
             "EnergyReactive_VArAC_Sum_Consumed": 0.0,
             "EnergyReactive_VArAC_Sum_Produced": 0.0,
-            # Phase 1 (always present)
-            "Current_AC_Phase_1": round(i_a, 2),
-            "PowerReal_P_Phase_1": round(p_a, 1),
-            "PowerReactive_Q_Phase_1": round(q_a, 1),
-            "PowerApparent_S_Phase_1": round(s_a, 1),
-            "PowerFactor_Phase_1": pf_a,
-            "EnergyReal_WAC_Phase_1_Consumed": round(tot_wh_imp, 1),
-            "EnergyReal_WAC_Phase_1_Produced": round(tot_wh_exp, 1),
+            "Current_AC_Phase_1": round(ph1.i, 2),
+            "PowerReal_P_Phase_1": round(ph1.p, 1),
+            "PowerReactive_Q_Phase_1": round(ph1.q, 1),
+            "PowerApparent_S_Phase_1": round(ph1.s, 1),
+            "PowerFactor_Phase_1": ph1.pf,
+            "EnergyReal_WAC_Phase_1_Consumed": round(m.wh_imp, 1),
+            "EnergyReal_WAC_Phase_1_Produced": round(m.wh_exp, 1),
             "EnergyReactive_VArAC_Phase_1_Consumed": 0.0,
             "EnergyReactive_VArAC_Phase_1_Produced": 0.0,
         }
+        if ph1.v_measured is not None:
+            meter_data["Voltage_AC_Phase_1"] = round(ph1.v_measured, 1)
 
-        if v_a_raw is not None:
-            meter_data["Voltage_AC_Phase_1"] = round(v_a_raw, 1)
-
-        if phases == 3:
+        if len(m.phases) == 3:
+            _, ph2, ph3 = m.phases
             meter_data.update({
-                "Current_AC_Phase_2": round(i_b, 2),
-                "Current_AC_Phase_3": round(i_c, 2),
-                "PowerReal_P_Phase_2": round(p_b, 1),
-                "PowerReal_P_Phase_3": round(p_c, 1),
-                "PowerReactive_Q_Phase_2": round(q_b, 1),
-                "PowerReactive_Q_Phase_3": round(q_c, 1),
-                "PowerApparent_S_Phase_2": round(s_b, 1),
-                "PowerApparent_S_Phase_3": round(s_c, 1),
-                "PowerFactor_Phase_2": pf_b,
-                "PowerFactor_Phase_3": pf_c,
+                "Current_AC_Phase_2": round(ph2.i, 2),
+                "Current_AC_Phase_3": round(ph3.i, 2),
+                "PowerReal_P_Phase_2": round(ph2.p, 1),
+                "PowerReal_P_Phase_3": round(ph3.p, 1),
+                "PowerReactive_Q_Phase_2": round(ph2.q, 1),
+                "PowerReactive_Q_Phase_3": round(ph3.q, 1),
+                "PowerApparent_S_Phase_2": round(ph2.s, 1),
+                "PowerApparent_S_Phase_3": round(ph3.s, 1),
+                "PowerFactor_Phase_2": ph2.pf,
+                "PowerFactor_Phase_3": ph3.pf,
             })
-            if v_b_raw is not None:
-                meter_data["Voltage_AC_Phase_2"] = round(v_b_raw, 1)
-            if v_c_raw is not None:
-                meter_data["Voltage_AC_Phase_3"] = round(v_c_raw, 1)
+            if ph2.v_measured is not None:
+                meter_data["Voltage_AC_Phase_2"] = round(ph2.v_measured, 1)
+            if ph3.v_measured is not None:
+                meter_data["Voltage_AC_Phase_3"] = round(ph3.v_measured, 1)
 
         scope = request.rel_url.query.get("Scope", "System")
         device_id = request.rel_url.query.get("DeviceId", "0")
