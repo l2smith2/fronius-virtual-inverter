@@ -127,7 +127,7 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 - mDNS announce loop: per-iteration try/except with 5s retry on error ✓
 - Modbus _handle_client: per-iteration try/except; _read_registers failure returns exception code 0x04 ✓
 - HTTP server: aiohttp error middleware logs and recovers from handler exceptions ✓
-- GitHub Actions CI: HACS validation + hassfest on push/PR/daily schedule ✓
+- GitHub Actions CI: HACS validation + hassfest + pytest on push/PR ✓ (no daily schedule — GitHub disables scheduled workflows after 60 days without repo activity)
 
 ## Known Issues
 - ~~Enabling a diagnostic entity makes all sensors unavailable until restart~~ — fixed in 1.2: enabling an entity reloads the entry, and the reload hung in the Modbus server's `wait_closed()` while the SnapIN held its connection open.
