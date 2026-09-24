@@ -2,210 +2,222 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from time import monotonic
+from datetime import datetime, timedelta
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
 
 from .const import (
-    CONF_MODBUS_ADDRESS,
+    CONF_ENTRY_TYPE,
     CONF_GRID_CT_RATING,
     CONF_GRID_PHASES,
-    CONF_I_GRID_PHASE_A,
-    CONF_I_GRID_PHASE_B,
-    CONF_I_GRID_PHASE_C,
-    CONF_V_GRID_PHASE_A,
-    CONF_V_GRID_PHASE_B,
-    CONF_V_GRID_PHASE_C,
-    CONF_POWER_FACTOR_PHASE_A,
-    CONF_POWER_FACTOR_PHASE_B,
-    CONF_POWER_FACTOR_PHASE_C,
-    CONF_Q_GRID_PHASE_A,
-    CONF_Q_GRID_PHASE_B,
-    CONF_Q_GRID_PHASE_C,
-    CONF_P_AKKU_DUAL_MODE,
+    CONF_METER_ROLE,
+    CONF_MODBUS_ADDRESS,
+    CONF_MODBUS_ENABLED,
+    CONF_P_AKKU_CHARGE_SENSOR,
+    CONF_P_AKKU_DISCHARGE_SENSOR,
     CONF_P_AKKU_INVERT,
     CONF_P_AKKU_SENSOR,
-    CONF_P_AKKU_SENSOR_NEG,
-    CONF_P_AKKU_SENSOR_POS,
-    CONF_P_GRID_DUAL_MODE,
+    CONF_P_GRID_EXPORT_SENSOR,
+    CONF_P_GRID_IMPORT_SENSOR,
     CONF_P_GRID_INVERT,
-    CONF_P_GRID_PHASE_A,
-    CONF_P_GRID_PHASE_B,
-    CONF_P_GRID_PHASE_C,
     CONF_P_GRID_SENSOR,
-    CONF_P_GRID_SENSOR_NEG,
-    CONF_P_GRID_SENSOR_POS,
     CONF_P_LOAD_INVERT,
     CONF_P_LOAD_SENSOR,
     CONF_P_PV_INVERT,
     CONF_P_PV_SENSOR,
     CONF_SOC_SENSOR,
     CONF_UPDATE_INTERVAL,
-    DEFAULT_MODBUS_ADDRESS,
     DEFAULT_GRID_CT_RATING,
+    DEFAULT_MODBUS_ADDRESS,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
+    ENTRY_TYPE_METER,
+    METER_ROLE_GENERATOR,
+    PHASE_QUANTITIES,
+    PHASES,
+    phase_key,
 )
-from .sensor_reader import _get_sensor_value, read_power_value, read_soc
+from .sensor_reader import get_sensor_value, read_signed_power, read_soc
 
 _LOGGER = logging.getLogger(__name__)
 
+_STORAGE_VERSION = 1
+_SAVE_INTERVAL = 300  # s — also saved on unload, and flushed when HA stops
+_MAX_GAP = 300  # s — cap on one integration step (e.g. after the loop stalled)
+_ENERGY_KEYS = ("E_Day", "E_Year", "E_Total", "_tot_wh_imp", "_tot_wh_exp")
 
-class FroniusVirtualInverterCoordinator(DataUpdateCoordinator):
-    """Coordinator that reads HA sensors and provides power flow data."""
 
-    def __init__(self, hass: HomeAssistant, config: dict[str, Any]) -> None:
-        self._config = config
-        interval = int(config.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
+def _energy_store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
+    return Store(hass, _STORAGE_VERSION, f"{DOMAIN}.{entry_id}")
 
+
+async def async_remove_energy_store(hass: HomeAssistant, entry_id: str) -> None:
+    """Delete an entry's stored energy counters."""
+    await _energy_store(hass, entry_id).async_remove()
+
+
+class FroniusVirtualInverterCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    """Reads the mapped HA sensors and keeps the energy counters."""
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        self.config: dict[str, Any] = {**entry.data, **entry.options}
+        self.is_meter = self.config.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_METER
+        interval = int(self.config.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
         super().__init__(
             hass,
             _LOGGER,
-            name=DOMAIN,
+            config_entry=entry,
+            name=f"{DOMAIN} {entry.title}",
             update_interval=timedelta(seconds=interval),
         )
+        self.last_refresh: datetime | None = None
+        # Energy counters persist across restarts: a real meter's totals never
+        # go backwards, and Fronius/SolarWeb log energy from these registers.
+        self._store = _energy_store(hass, entry.entry_id)
+        self._energy: dict[str, float] = dict.fromkeys(_ENERGY_KEYS, 0.0)
+        self._day: str | None = None
+        self._year: int | None = None
+        self._last_sample: float | None = None
+        self._save_due: float | None = None
 
-        self._last_refresh: datetime | None = None
+    async def async_load_energy(self) -> None:
+        """Restore energy counters saved by a previous run."""
+        stored = await self._store.async_load() or {}
+        for key in _ENERGY_KEYS:
+            if isinstance(stored.get(key), (int, float)):
+                self._energy[key] = float(stored[key])
+        self._day = stored.get("day")
+        self._year = stored.get("year")
 
-        # PV energy accumulators
-        self._e_day: float = 0.0
-        self._e_year: float = 0.0
-        self._e_total: float = 0.0
+    async def async_save_energy(self) -> None:
+        """Write energy counters now (on unload)."""
+        await self._store.async_save(self._energy_snapshot())
 
-        # Grid energy accumulators for Modbus Smart Meter emulation
-        self._tot_wh_imp: float = 0.0
-        self._tot_wh_exp: float = 0.0
+    def _energy_snapshot(self) -> dict[str, Any]:
+        return {**self._energy, "day": self._day, "year": self._year}
+
+    def _schedule_save(self) -> None:
+        """Save at a fixed deadline.
+
+        async_delay_save is a debounce — re-arming it with the same delay on
+        every update would push the write back forever.
+        """
+        now = self.hass.loop.time()
+        if self._save_due is None:
+            self._save_due = now + _SAVE_INTERVAL
+        elif now >= self._save_due:  # overdue: write now and start the next period
+            self._save_due = now + _SAVE_INTERVAL
+            self._store.async_delay_save(self._energy_snapshot, 0)
+            return
+        # Pending until the deadline — HA also flushes it if it stops first
+        self._store.async_delay_save(self._energy_snapshot, self._save_due - now)
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Read all configured sensors and return power flow data."""
         try:
-            self._last_refresh = datetime.now(timezone.utc)
-            cfg = self._config
+            data = self._read_meter() if self.is_meter else self._read_inverter()
+            self._integrate_energy(data)
+        except Exception:
+            if self.data is None:
+                raise  # first refresh: let setup fail and retry
+            _LOGGER.exception("Error reading sensors; serving last known values")
+            return self.data
+        self.last_refresh = dt_util.utcnow()
+        self._schedule_save()
+        _LOGGER.debug("Updated: %s", data)
+        return data
 
-            p_grid = read_power_value(
-                self.hass,
-                single_sensor=cfg.get(CONF_P_GRID_SENSOR),
-                pos_sensor=cfg.get(CONF_P_GRID_SENSOR_POS),
-                neg_sensor=cfg.get(CONF_P_GRID_SENSOR_NEG),
-                dual_mode=bool(cfg.get(CONF_P_GRID_DUAL_MODE, False)),
-                invert=bool(cfg.get(CONF_P_GRID_INVERT, False)),
-            )
+    def _read_inverter(self) -> dict[str, Any]:
+        cfg = self.config
+        hass = self.hass
+        data: dict[str, Any] = {
+            "P_Grid": read_signed_power(
+                hass,
+                cfg.get(CONF_P_GRID_SENSOR),
+                cfg.get(CONF_P_GRID_IMPORT_SENSOR),
+                cfg.get(CONF_P_GRID_EXPORT_SENSOR),
+                cfg.get(CONF_P_GRID_INVERT, False),
+            ),
+            "P_PV": read_signed_power(
+                hass, cfg.get(CONF_P_PV_SENSOR), invert=cfg.get(CONF_P_PV_INVERT, False)
+            ),
+            # Fronius P_Akku is positive while discharging
+            "P_Akku": read_signed_power(
+                hass,
+                cfg.get(CONF_P_AKKU_SENSOR),
+                cfg.get(CONF_P_AKKU_DISCHARGE_SENSOR),
+                cfg.get(CONF_P_AKKU_CHARGE_SENSOR),
+                cfg.get(CONF_P_AKKU_INVERT, False),
+            ),
+            "P_Load": read_signed_power(
+                hass, cfg.get(CONF_P_LOAD_SENSOR), invert=cfg.get(CONF_P_LOAD_INVERT, False)
+            ),
+            "SOC": read_soc(hass, cfg.get(CONF_SOC_SENSOR)),
+            "grid_phases": 3 if cfg.get(CONF_GRID_PHASES) == "3" else 1,
+            "grid_ct_rating": float(cfg.get(CONF_GRID_CT_RATING, DEFAULT_GRID_CT_RATING)),
+            "modbus_address": (
+                int(cfg.get(CONF_MODBUS_ADDRESS, DEFAULT_MODBUS_ADDRESS))
+                if cfg.get(CONF_MODBUS_ENABLED)
+                else None
+            ),
+        }
+        # Phase B/C sensors stay configured but unused after switching to single phase
+        active = PHASES[: data["grid_phases"]]
+        for prefix, data_prefix in PHASE_QUANTITIES.items():
+            for phase in PHASES:
+                entity_id = cfg.get(phase_key(prefix, phase)) if phase in active else None
+                data[f"{data_prefix}_{phase.upper()}"] = get_sensor_value(
+                    hass, entity_id, fraction=prefix == "power_factor"
+                )
+        return data
 
-            p_pv = read_power_value(
-                self.hass,
-                single_sensor=cfg.get(CONF_P_PV_SENSOR),
-                pos_sensor=None,
-                neg_sensor=None,
-                dual_mode=False,
-                invert=bool(cfg.get(CONF_P_PV_INVERT, False)),
-            )
+    def _read_meter(self) -> dict[str, Any]:
+        """Power through a standalone meter, in meter convention (+ = into the device)."""
+        cfg = self.config
+        split = bool(cfg.get(CONF_P_GRID_IMPORT_SENSOR) or cfg.get(CONF_P_GRID_EXPORT_SENSOR))
+        power = read_signed_power(
+            self.hass,
+            cfg.get(CONF_P_GRID_SENSOR),
+            cfg.get(CONF_P_GRID_IMPORT_SENSOR),
+            cfg.get(CONF_P_GRID_EXPORT_SENSOR),
+            cfg.get(CONF_P_GRID_INVERT, False),
+        )
+        # A single generator/battery sensor is entered as "+ = producing"; a
+        # meter at a generator reads production as power flowing to the grid.
+        if power is not None and not split and cfg.get(CONF_METER_ROLE) == METER_ROLE_GENERATOR:
+            power = -power
+        return {
+            "P_Grid": power,
+            "grid_phases": 3 if cfg.get(CONF_GRID_PHASES) == "3" else 1,
+            "modbus_address": int(cfg.get(CONF_MODBUS_ADDRESS, DEFAULT_MODBUS_ADDRESS)),
+        }
 
-            p_akku = read_power_value(
-                self.hass,
-                single_sensor=cfg.get(CONF_P_AKKU_SENSOR),
-                pos_sensor=cfg.get(CONF_P_AKKU_SENSOR_POS),
-                neg_sensor=cfg.get(CONF_P_AKKU_SENSOR_NEG),
-                dual_mode=bool(cfg.get(CONF_P_AKKU_DUAL_MODE, False)),
-                invert=bool(cfg.get(CONF_P_AKKU_INVERT, False)),
-            )
+    def _integrate_energy(self, data: dict[str, Any]) -> None:
+        """Accumulate energy over the real time elapsed since the last sample."""
+        now = dt_util.now()
+        if self._day != now.date().isoformat():
+            self._day = now.date().isoformat()
+            self._energy["E_Day"] = 0.0
+        if self._year != now.year:
+            self._year = now.year
+            self._energy["E_Year"] = 0.0
 
-            p_load = read_power_value(
-                self.hass,
-                single_sensor=cfg.get(CONF_P_LOAD_SENSOR),
-                pos_sensor=None,
-                neg_sensor=None,
-                dual_mode=False,
-                invert=bool(cfg.get(CONF_P_LOAD_INVERT, False)),
-            )
+        mono = monotonic()
+        hours = 0.0 if self._last_sample is None else min(mono - self._last_sample, _MAX_GAP) / 3600
+        self._last_sample = mono
 
-            soc = read_soc(self.hass, cfg.get(CONF_SOC_SENSOR))
-
-            # Per-phase grid power and current
-            p_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_P_GRID_PHASE_A))
-            p_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_P_GRID_PHASE_B))
-            p_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_P_GRID_PHASE_C))
-            i_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_I_GRID_PHASE_A))
-            i_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_I_GRID_PHASE_B))
-            i_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_I_GRID_PHASE_C))
-
-            # Store None when no sensor configured — http_server defaults to 240V for derivation
-            v_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_V_GRID_PHASE_A))
-            v_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_V_GRID_PHASE_B))
-            v_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_V_GRID_PHASE_C))
-            pf_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_POWER_FACTOR_PHASE_A))
-            pf_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_POWER_FACTOR_PHASE_B))
-            pf_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_POWER_FACTOR_PHASE_C))
-            q_grid_a = _get_sensor_value(self.hass, cfg.get(CONF_Q_GRID_PHASE_A))
-            q_grid_b = _get_sensor_value(self.hass, cfg.get(CONF_Q_GRID_PHASE_B))
-            q_grid_c = _get_sensor_value(self.hass, cfg.get(CONF_Q_GRID_PHASE_C))
-
-            grid_phases = int(cfg.get(CONF_GRID_PHASES, "1"))
-            ct_rating = float(cfg.get(CONF_GRID_CT_RATING, DEFAULT_GRID_CT_RATING))
-            modbus_address = int(cfg.get(CONF_MODBUS_ADDRESS, DEFAULT_MODBUS_ADDRESS))
-
-            interval_s = float(int(cfg.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)))
-
-            # Accumulate PV energy
-            if p_pv is not None and p_pv > 0:
-                increment_wh = p_pv * interval_s / 3600.0
-                self._e_day += increment_wh
-                self._e_year += increment_wh
-                self._e_total += increment_wh
-
-            # Accumulate grid energy for Modbus meter
-            if p_grid is not None:
-                grid_wh = abs(p_grid) * interval_s / 3600.0
-                if p_grid > 0:
-                    self._tot_wh_imp += grid_wh
-                elif p_grid < 0:
-                    self._tot_wh_exp += grid_wh
-
-            result: dict[str, Any] = {
-                "P_Grid": p_grid,
-                "P_PV": p_pv,
-                "P_Akku": p_akku,
-                "P_Load": p_load,
-                "SOC": soc,
-                "E_Day": self._e_day,
-                "E_Year": self._e_year,
-                "E_Total": self._e_total,
-                "_tot_wh_imp": self._tot_wh_imp,
-                "_tot_wh_exp": self._tot_wh_exp,
-                "P_Grid_A": p_grid_a,
-                "P_Grid_B": p_grid_b,
-                "P_Grid_C": p_grid_c,
-                "I_Grid_A": i_grid_a,
-                "I_Grid_B": i_grid_b,
-                "I_Grid_C": i_grid_c,
-                "V_Grid_A": v_grid_a,
-                "V_Grid_B": v_grid_b,
-                "V_Grid_C": v_grid_c,
-                "PF_Grid_A": pf_grid_a,
-                "PF_Grid_B": pf_grid_b,
-                "PF_Grid_C": pf_grid_c,
-                "Q_Grid_A": q_grid_a,
-                "Q_Grid_B": q_grid_b,
-                "Q_Grid_C": q_grid_c,
-                "grid_phases": grid_phases,
-                "grid_ct_rating": ct_rating,
-                "modbus_address": modbus_address,
-            }
-
-            _LOGGER.debug(
-                "Updated power flow: P_Grid=%s P_PV=%s P_Akku=%s P_Load=%s SOC=%s",
-                p_grid, p_pv, p_akku, p_load, soc,
-            )
-            return result
-        except Exception as e:
-            _LOGGER.error("Error updating data: %s", e, exc_info=True)
-            if self.data is not None:
-                return self.data  # return last known good data
-            raise  # re-raise on first run so ConfigEntryNotReady works correctly
-
-    def update_config(self, new_config: dict[str, Any]) -> None:
-        """Update config (called after options flow)."""
-        self._config = new_config
-        interval = int(new_config.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
-        self.update_interval = timedelta(seconds=interval)
+        p_pv = data.get("P_PV")
+        if p_pv is not None and p_pv > 0:
+            for key in ("E_Day", "E_Year", "E_Total"):
+                self._energy[key] += p_pv * hours
+        p_grid = data.get("P_Grid")
+        if p_grid is not None:
+            key = "_tot_wh_imp" if p_grid > 0 else "_tot_wh_exp"
+            self._energy[key] += abs(p_grid) * hours
+        data.update(self._energy)

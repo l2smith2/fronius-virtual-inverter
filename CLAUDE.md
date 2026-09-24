@@ -4,6 +4,11 @@
 ## What this integration does
 Emulates a Fronius GEN24 inverter + Fronius Smart Meter IP on the local network so a Fronius Wattpilot EV charger can perform PV surplus (Eco) charging without real Fronius hardware. Reads power flow data from HA sensors and serves it via two protocols.
 
+## Two config entry types (chosen from a menu when adding the integration)
+- **Virtual inverter** (`entry_type: inverter`) — HTTP Solar API + mDNS for the Wattpilot, optional grid Smart Meter IP (Modbus)
+- **Virtual smart meter** (`entry_type: meter`) — standalone Smart Meter IP for a real Fronius, e.g. an AC-coupled battery at the "external generator" position. No HTTP/mDNS.
+- `entry.data` = identity only (`entry_type`, `name`); every setting lives in `entry.options` (config version 1.2; `async_migrate_entry` converts 1.1 entries)
+
 ## Two emulation modes
 1. **HTTP Solar API v1** (port 80) — impersonates a Fronius Datamanager 2.0 inverter
    - Endpoints: GetAPIVersion.cgi, GetPowerFlowRealtimeData.fcgi, GetLoggerInfo.fcgi, GetInverterInfo.fcgi, GetMeterRealtimeData.fcgi, GetStorageRealtimeData.fcgi, GetActiveDeviceInfo.cgi
@@ -15,9 +20,13 @@ Emulates a Fronius GEN24 inverter + Fronius Smart Meter IP on the local network 
 
 2. **Modbus TCP Smart Meter IP** (port 502) — emulates Fronius Smart Meter IP
    - SunSpec float model 213 (three-phase)
-   - Unit ID = 240
-   - Hz is uint16 at wire address 40095 (register 40096), value 5000 = 50.00Hz
+   - Unit ID = 240 for the inverter's grid meter; standalone meters default to the next free ID (241)
+   - One `ModbusTcpServer` per port (registry in `hass.data`), routing requests by unit ID to `SunSpecMeter`s — several meters share HA-IP:502. Unknown unit IDs get no reply.
+   - Hz is float32 at wire address 40095 (registers 40096-40097) = 50.0
    - W register at wire address 40097 (registers 40098-40099) — confirmed by live test
+   - W sign: positive = flow from the grid side into the metered device. Generator-role meters negate their "+ = producing" sensor (a producing generator reads negative, like a real meter with the grid on one side)
+   - Per-phase values come from the same model as HTTP (`meter.py`); unused phases carry nominal voltage and zero load
+   - `stop()` closes client connections first: `Server.wait_closed()` waits for all connections (Python 3.12+) and Fronius never disconnects — this hung every entry reload (the old "sensors unavailable until restart" issue)
    - Successfully detected by a real Fronius SnapIN inverter on the same LAN
    - SnapIN adds it as TCP meter at HA-IP:502, unit ID 240
    - Data appears in SolarWeb ✓
@@ -62,6 +71,8 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 - Optional per-phase reactive power sensors: `q_grid_phase_a/b/c` (VAr) — defaults to 0 if not set
 - If per-phase sensors not configured: auto-splits total P_Grid equally across phases (or all on phase 1 for single-phase)
 - If current sensors not provided: derives from P/V (240V default)
+- Per-phase sensors are only read for active phases (B/C ignored when single phase)
+- Power factor sensors reported in % are scaled to 0..1
 - CT rating and per-phase current can also be configured directly in the Solar.wattpilot app
 
 **Load balancing stability note:**
@@ -88,6 +99,11 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 - **System scope (`Scope=System`)**: `Body.Data` is `{"0": meter_dict}` — indexed by device address (multiple devices)
 - `Head.RequestArguments` populated from actual query params: `{"DeviceClass": "Meter", "DeviceId": int, "Scope": str}`
 
+## Energy counters
+- `E_Day/E_Year/E_Total` (PV) and `_tot_wh_imp/_tot_wh_exp` (meter) integrate power over real elapsed time (capped at 300 s per step)
+- Persisted per entry in `.storage/fronius_virtual_inverter.<entry_id>`: saved every 5 min at a fixed deadline (not a debounce — `async_delay_save` re-armed each update would never fire), on unload, and flushed when HA stops
+- `E_Day` resets at local midnight, `E_Year` on New Year
+
 ## Confirmed working ✓
 - Wattpilot discovery and pairing via mDNS ✓
 - PV surplus (Eco) charging active ✓
@@ -101,8 +117,8 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 - GetMeterRealtimeData.cgi (Device scope) returns flat Body.Data — confirmed against real SnapIN ✓
 - GetMeterRealtimeData Head.RequestArguments populated with actual query params ✓
 - Per-phase voltage, power factor, reactive power sensors supported ✓
-- Config flow: 6 steps — user → grid (Required: Grid & Solar, includes P_PV) → generation (Optional: Battery & Load) → advanced (Optional: Load Balancing Phase A) → three_phase (Phase B/C) → modbus (Optional: Smart Meter IP) ✓
-- P_PV sensor in Step 2 alongside P_Grid (both marked Required in UI) ✓
+- Config flow (1.2): menu (inverter | meter). Inverter: inverter → grid → battery. Meter: meter → meter_power. Signed sensor or a collapsible "separate sensors" section per power value; validated (required, not both)
+- Options flow (1.2): menu of sections, each saves on its own; cleared fields are removed from options
 - Per-phase diagnostic sensors disabled by default (entity_registry_enabled_default=False) ✓
 - Unconfigured diagnostic sensors hidden via available property (checks last_update_success + None) ✓
 - Grid energy import/export accumulator sensors added (TOTAL_INCREASING, disabled by default) ✓
@@ -111,10 +127,10 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 - mDNS announce loop: per-iteration try/except with 5s retry on error ✓
 - Modbus _handle_client: per-iteration try/except; _read_registers failure returns exception code 0x04 ✓
 - HTTP server: aiohttp error middleware logs and recovers from handler exceptions ✓
-- GitHub Actions CI: HACS validation + hassfest on push/PR/daily schedule ✓
+- GitHub Actions CI: HACS validation + hassfest + pytest on push/PR ✓ (no daily schedule — GitHub disables scheduled workflows after 60 days without repo activity)
 
 ## Known Issues
-- **Enabling a diagnostic entity triggers a coordinator refresh** — if that refresh fails, all sensors go unavailable. A full HA restart is required to recover. Root cause under investigation.
+- ~~Enabling a diagnostic entity makes all sensors unavailable until restart~~ — fixed in 1.2: enabling an entity reloads the entry, and the reload hung in the Modbus server's `wait_closed()` while the SnapIN held its connection open.
 - **"P_Grid is null" when switching pairing** — if the Wattpilot is currently paired with another inverter, pairing with the virtual inverter while the old pairing is still active may show this error. Fix: fully unpair from the existing inverter first. Wattpilot app limitation.
 
 ## Network topology (example)
@@ -124,11 +140,12 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 - All devices must be on the same subnet — mDNS does not cross subnet boundaries
 - If using a VM or container: ensure multicast is not filtered (disable multicast snooping on the bridge)
 
-## Sign conventions (Fronius)
+## Sign conventions (Fronius Solar API)
 - P_Grid: positive = import, negative = export
-- P_Akku: positive = charging, negative = discharging
+- P_Akku: positive = discharging, negative = charging (1.1 had this reversed; the 1.2 migration flips `p_akku_invert` for single-sensor setups, and charge/discharge pairs are combined as discharge − charge)
 - P_PV: always positive
 - P_Load: always negative
+- Balance: P_Grid + P_PV + P_Akku + P_Load = 0
 
 ## GitHub
 https://github.com/l2smith2/fronius-virtual-inverter
@@ -136,13 +153,18 @@ https://github.com/l2smith2/fronius-virtual-inverter
 ## Repo structure (HACS-compatible)
 - Integration files live at `custom_components/fronius_virtual_inverter/` inside the repo
 - Brand assets (icon.png, icon@2x.png, logo.png) live at `custom_components/fronius_virtual_inverter/brand/`
-- `hacs.json`, `README.md`, `CLAUDE.md` sit at the repo root
+- `hacs.json`, `README.md`, `CLAUDE.md`, `tests/` sit at the repo root
 - For HACS installs: HACS copies `custom_components/fronius_virtual_inverter/` → `/config/custom_components/fronius_virtual_inverter/`
 - For development: edit in `/homeassistant/fronius-dev/`, deploy with `cp -r fronius-dev/custom_components/fronius_virtual_inverter/. /homeassistant/custom_components/fronius_virtual_inverter/`, then `ha core restart`
 - Symlinks do NOT work reliably for HA custom components — always use real directory copy
 
+## Testing
+- `pip install -r requirements_test.txt && pytest` — pytest-homeassistant-custom-component: config/options flows, 1.1→1.2 migration, real HTTP + Modbus servers on local ports, energy persistence, translations coverage
+- hassfest locally: sparse-clone home-assistant/core `script/` at the matching tag, then `python -m script.hassfest --integration-path custom_components/fronius_virtual_inverter`
+- `strings.json` and `translations/en.json` must stay identical (custom integrations don't resolve `[%key:…%]` references, so shared texts are duplicated). hassfest rejects `<...>` in strings (looks like HTML)
+
 ## manifest.json
-- Version: `1.1.0`
+- Version: `1.2.0`
 - Minimum HA version: `2026.3.0` (noted in README only — `homeassistant` key is not valid in manifest.json for custom components)
 - `iot_class`: `local_push`
 - `config_flow`: true
@@ -150,13 +172,15 @@ https://github.com/l2smith2/fronius-virtual-inverter
 - Key ordering required by hassfest: `domain`, `name`, then all remaining keys alphabetically
 
 ## Diagnostic sensors (sensor.py)
+- Standalone meters get only: Meter Power (enabled), Energy Imported/Exported, Modbus Device Address
+- `_attr_has_entity_name = True`; `last_updated` attribute is in `_unrecorded_attributes` (changes every update)
 - 6 core sensors always enabled: Grid Power, PV Power, Battery Power, Load Power, Battery SOC, Energy Today
 - 2 energy accumulator sensors disabled by default: Grid Energy Imported (`_tot_wh_imp`), Grid Energy Exported (`_tot_wh_exp`) — enable to add to Energy dashboard (TOTAL_INCREASING + ENERGY + Wh)
 - 15 per-phase sensors (P/I/V/PF/Q for phases A/B/C) have `entity_registry_enabled_default=False` — disabled until user explicitly enables or configures them
 - 1 Modbus Device Address sensor (disabled by default)
 - `available` property: checks `last_update_success` → `data is None` → `data.get(key) is None`
 - Coordinator stores `None` (not a default value) for unconfigured sensors so `available` correctly hides them
-- `extra_state_attributes` returns `{"last_updated": iso_string_or_None}` using `getattr(coordinator, '_last_refresh', None)` + try/except
+- `extra_state_attributes` returns `{"last_updated": iso_string_or_None}` from `coordinator.last_refresh`
 
 ## HA path
 /config/custom_components/fronius_virtual_inverter/
