@@ -126,7 +126,7 @@ Both exceed zeroconf library's 15-byte label limit so we can't use ServiceInfo.
 - Coordinator _async_update_data wrapped in try/except: returns last known data on error, re-raises on first run ✓
 - mDNS announce loop: per-iteration try/except with 5s retry on error ✓
 - Modbus _handle_client: per-iteration try/except; _read_registers failure returns exception code 0x04 ✓
-- HTTP server: aiohttp error middleware logs and recovers from handler exceptions ✓
+- HTTP server: aiohttp error middleware logs and recovers from handler exceptions ✓ (re-raises `web.HTTPException`, so unknown paths are a 404 — before 1.2.0 every 404 became a logged 500)
 - GitHub Actions CI: HACS validation + hassfest + pytest on push/PR ✓ (no daily schedule — GitHub disables scheduled workflows after 60 days without repo activity)
 
 ## Known Issues
