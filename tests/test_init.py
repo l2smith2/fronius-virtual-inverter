@@ -124,6 +124,13 @@ async def test_migrated_inverter_serves_and_unloads(
     meter = await _http_get(http_port, "/solar_api/v1/GetMeterRealtimeData.cgi?Scope=Device&DeviceId=0")
     assert meter["Body"]["Data"]["PowerReal_P_Sum"] == -1500.0  # Device scope: flat
 
+    # Unknown paths (browsers asking for /favicon.ico, network scanners) are a 404, not a logged 500
+    reader, writer = await asyncio.open_connection("127.0.0.1", http_port)
+    writer.write(b"GET /favicon.ico HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+    status_line = (await asyncio.wait_for(reader.read(), 5)).split(b"\r\n", 1)[0]
+    writer.close()
+    assert b" 404 " in status_line, status_line
+
     # Diagnostic sensor mirrors it
     assert hass.states.get("sensor.fronius_virtual_battery_power").state == "-2000.0"
 
